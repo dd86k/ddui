@@ -7,8 +7,9 @@ import core.stdc.ctype;
 import core.stdc.stdarg;
 import bindbc.opengl;
 import bindbc.sdl, bindbc.sdl.dynload;
-import renderer.sdl2_gl11;
 import ddui;
+version (GL33) import renderer.sdl2.gl33;
+else           import renderer.sdl2.gl11;
 
 extern (C):
 
@@ -39,9 +40,15 @@ void main()
     // Setup SDL
     SDL_SetHint(SDL_HINT_VIDEO_HIGHDPI_DISABLED, "0");
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS);
-    version (OSX)
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    version (GL33)
+    {
+        SDL_GL_SetAttribute (SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+        SDL_GL_SetAttribute (SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    }
     
     // Initiate SDL window
     window = SDL_CreateWindow("Demo",
@@ -56,30 +63,9 @@ void main()
     with (sdlversion) printf("* SDL: %u.%u.%u\n", major, minor, patch);
     
     // OpenGL setup
-    GLSupport glstatus = loadOpenGL;
-    assert(glstatus, "Failed to load OpenGL");
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDisable(GL_CULL_FACE);
-    glDisable(GL_DEPTH_TEST);
-    glEnable(GL_SCISSOR_TEST);
-    glEnable(GL_TEXTURE_2D);
-    glEnableClientState(GL_VERTEX_ARRAY);
-    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-    glEnableClientState(GL_COLOR_ARRAY);
-    
-    // Print renderer info
-    printf("* GL_RENDERER: %s\n", glGetString(GL_RENDERER));
-    
-    // Init textures
-    GLuint id = void;
-    glGenTextures(1, &id);
-    glBindTexture(GL_TEXTURE_2D, id);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, ATLAS_WIDTH, ATLAS_HEIGHT, 0,
-        GL_ALPHA, GL_UNSIGNED_BYTE, atlas_texture.ptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    assert(glGetError() == 0);
+    initiate_renderer();
+    printf("* GL_RENDERER : %s\n", glGetString(GL_RENDERER));
+    printf("* GL_VERSION  : %s\n", glGetString(GL_VERSION));
     
     // Init UI
     mu_Context ui = void;
@@ -87,15 +73,15 @@ void main()
     ui.text_width  = &text_width;
     ui.text_height = &text_height;
     
-    while (true)
+    GAME: while (true)
     {
-        // Input
+        // Transmit SDL input events to DDUI
         SDL_Event e = void;
         while (SDL_PollEvent(&e))
         {
             switch (e.type)
             {
-                case SDL_QUIT: return;
+                case SDL_QUIT: break GAME;
                 case SDL_MOUSEMOTION:
                     mu_input_mousemove(&ui, e.motion.x, e.motion.y);
                     continue;
@@ -155,23 +141,30 @@ void main()
                 default: continue;
             }
         }
-        
+    
         // Flip screen
         r_present();
     }
+
+    SDL_GL_DeleteContext(glctx);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
 }
 
 private:
 
-void test_window(mu_Context *ctx) {
+void test_window(mu_Context *ctx)
+{
     /* do window */
-    if (mu_begin_window(ctx, "Demo Window", mu_Rect(40, 40, 300, 450))) {
+    if (mu_begin_window(ctx, "Demo Window", mu_Rect(40, 40, 300, 450)))
+    {
         mu_Container *win = mu_get_current_container(ctx);
         win.rect.w = mu_max(win.rect.w, 240);
         win.rect.h = mu_max(win.rect.h, 300);
         
         /* window info */
-        if (mu_header(ctx, "Window Info")) {
+        if (mu_header(ctx, "Window Info"))
+        {
             mu_Container *win2 = mu_get_current_container(ctx);
             char[64] buf = void;
             static immutable int[2] r = [ 54, -1 ];
@@ -183,8 +176,9 @@ void test_window(mu_Context *ctx) {
         }
         
         /* labels + buttons */
-        if (mu_header_ex(ctx, "Test Buttons", MU_OPT_EXPANDED)) {
-            static immutable int[3] r2 = [ 86, -110, -1 ]; // (int[]) { 86, -110, -1 }
+        if (mu_header_ex(ctx, "Test Buttons", MU_OPT_EXPANDED))
+        {
+            static immutable int[3] r2 = [ 86, -110, -1 ];
             mu_layout_row(ctx, 3, r2.ptr, 0);
             mu_label(ctx, "Test buttons 1:");
             if (mu_button(ctx, "Button 1")) { write_log("Pressed button 1"); }
@@ -200,8 +194,9 @@ void test_window(mu_Context *ctx) {
         }
         
         /* tree */
-        if (mu_header_ex(ctx, "Tree and Text", MU_OPT_EXPANDED)) {
-            __gshared int[2] r3 = [ 140, -1 ]; // (int[]) { 140, -1 }
+        if (mu_header_ex(ctx, "Tree and Text", MU_OPT_EXPANDED))
+        {
+            static immutable int[2] r3 = [ 140, -1 ];
             mu_layout_row(ctx, 2, r3.ptr, 0);
             mu_layout_begin_column(ctx);
             if (mu_begin_treenode(ctx, "Test 1")) {
@@ -217,8 +212,9 @@ void test_window(mu_Context *ctx) {
                 }
                 mu_end_treenode(ctx);
             }
-            if (mu_begin_treenode(ctx, "Test 2")) {
-                __gshared int[2] r4 = [ 54, 54 ]; // (int[]) { 54, 54 }
+            if (mu_begin_treenode(ctx, "Test 2"))
+            {
+                static immutable int[2] r4 = [ 54, 54 ];
                 mu_layout_row(ctx, 2, r4.ptr, 0);
                 if (mu_button(ctx, "Button 3")) { write_log("Pressed button 3"); }
                 if (mu_button(ctx, "Button 4")) { write_log("Pressed button 4"); }
@@ -226,8 +222,9 @@ void test_window(mu_Context *ctx) {
                 if (mu_button(ctx, "Button 6")) { write_log("Pressed button 6"); }
                 mu_end_treenode(ctx);
             }
-            if (mu_begin_treenode(ctx, "Test 3")) {
-                __gshared int[3] checks = [ 1, 0, 1 ];
+            if (mu_begin_treenode(ctx, "Test 3"))
+            {
+                __gshared int[3] checks = [ 1, 0, 1 ]; // Mutable
                 mu_checkbox(ctx, "Checkbox 1", &checks[0]);
                 mu_checkbox(ctx, "Checkbox 2", &checks[1]);
                 mu_checkbox(ctx, "Checkbox 3", &checks[2]);
@@ -236,23 +233,23 @@ void test_window(mu_Context *ctx) {
             mu_layout_end_column(ctx);
             
             mu_layout_begin_column(ctx);
-            int[1] r5 = [ -1 ]; // (int[]) { -1 }
+            static immutable int[1] r5 = [ -1 ];
             mu_layout_row(ctx, 1, r5.ptr, 0);
-            const(char) *s = 
+            mu_text(ctx, 
                 "Lorem ipsum dolor sit amet, consectetur adipiscing "~
                 "elit. Maecenas lacinia, sem eu lacinia molestie, mi risus faucibus "~
-                "ipsum, eu varius magna felis a nulla.";
-            mu_text(ctx, s);
+                "ipsum, eu varius magna felis a nulla.");
             mu_layout_end_column(ctx);
         }
         
         /* background color sliders */
-        if (mu_header_ex(ctx, "Background Color", MU_OPT_EXPANDED)) {
-            int[2] r6 = [ -78, -1 ]; // (int[]) { -78, -1 }
+        if (mu_header_ex(ctx, "Background Color", MU_OPT_EXPANDED))
+        {
+            static immutable int[2] r6 = [ -78, -1 ];
             mu_layout_row(ctx, 2, r6.ptr, 74);
             /* sliders */
             mu_layout_begin_column(ctx);
-            int[2] r7 = [ 46, -1 ]; // (int[]) { -78, -1 }
+            static immutable int[2] r7 = [ 46, -1 ];
             mu_layout_row(ctx, 2, r7.ptr, 0);
             mu_label(ctx, "Red:");   mu_slider(ctx, &bg[0], 0, 255);
             mu_label(ctx, "Green:"); mu_slider(ctx, &bg[1], 0, 255);
@@ -272,7 +269,8 @@ void test_window(mu_Context *ctx) {
     }
 }
 
-int uint8_slider(mu_Context *ctx, ubyte *value, int low, int high) {
+int uint8_slider(mu_Context *ctx, ubyte *value, int low, int high)
+{
     mu_push_id(ctx, &value, value.sizeof);
     float tmp = *value;
     int res = mu_slider_ex(ctx, &tmp, low, high, 0, "%.0f", MU_OPT_ALIGNCENTER);
@@ -300,10 +298,11 @@ immutable color_t[] colors = [
     { null }
 ];
 
-void style_window(mu_Context *ctx) {
-    if (mu_begin_window(ctx, "Style Editor", mu_Rect(350, 250, 300, 240))) {
+void style_window(mu_Context *ctx)
+{
+    if (mu_begin_window(ctx, "Style Editor", mu_Rect(350, 250, 300, 240))) 
+    {
         int sw = cast(int)(mu_get_current_container(ctx).body_.w * 0.14f); // ~1/5
-        // (int[]) { 80, sw, sw, sw, sw, -1 }
         int[6] r = [ 80, sw, sw, sw, sw, -1 ];
         mu_layout_row(ctx, 6, r.ptr, 0);
         for (int i = 0; colors[i].label; ++i) {
@@ -318,12 +317,13 @@ void style_window(mu_Context *ctx) {
     }
 }
 
-__gshared  char[64000] logbuf = 0; // char.init == 0xff, confuses strlen
-__gshared       size_t logi;
-__gshared          int logbuf_updated = 0;
-__gshared float[3]     bg = [ 90, 95, 100 ];
+__gshared char[64000] logbuf = 0; // char.init == 0xff, confuses strlen
+__gshared      size_t logi;
+__gshared         int logbuf_updated = 0;
+__gshared    float[3] bg = [ 90, 95, 100 ];
 
-void write_log(const(char) *text) {
+void write_log(const(char) *text)
+{
     size_t l = strlen(text);
     if (l == 0) return;
     memcpy(logbuf.ptr + logi, text, l);
@@ -333,8 +333,10 @@ void write_log(const(char) *text) {
     logbuf_updated = 1;
 }
 
-void log_window(mu_Context *ctx) {
-    if (mu_begin_window(ctx, "Console", mu_Rect(350, 40, 300, 200))) {
+void log_window(mu_Context *ctx)
+{
+    if (mu_begin_window(ctx, "Console", mu_Rect(350, 40, 300, 200)))
+    {
         /* output text panel */
         static immutable int[1] cols1 = [ -1 ]; // (int[]) { -1 }
         mu_layout_row(ctx, 1, cols1.ptr, -25);
@@ -367,12 +369,14 @@ void log_window(mu_Context *ctx) {
     }
 }
 
+/// SDL-DDUI mouse button mapping
 immutable const(ubyte)[256] button_map = [
     SDL_BUTTON_LEFT   & 0xff :  MU_MOUSE_LEFT,
     SDL_BUTTON_RIGHT  & 0xff :  MU_MOUSE_RIGHT,
     SDL_BUTTON_MIDDLE & 0xff :  MU_MOUSE_MIDDLE,
 ];
 
+/// SDL-DDUI keyboard key mapping
 immutable const(ubyte)[256] key_map = [
     SDLK_LSHIFT       & 0xff : MU_KEY_SHIFT,
     SDLK_RSHIFT       & 0xff : MU_KEY_SHIFT,

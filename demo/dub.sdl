@@ -6,7 +6,7 @@ copyright "Copyright © 2022, dd86k <dd@dax.moe>"
 license "BSD-3-Clause"
 
 versions "SDL" "SDL_2010"
-versions "GL" "GL_AllowDeprecated" # Due to some 1.1 functions
+versions "GL"
 
 dependency "bindbc-opengl" version="~>1.0.2"
 dependency "bindbc-loader" version="~>1.0.1"
@@ -23,3 +23,10 @@ subConfiguration "bindbc-sdl" "dynamicBC"
 buildOptions "betterC" platform="dmd"
 buildOptions "betterC" platform="ldc"
 dflags "-fno-druntime" platform="gdc"
+
+configuration "gl11" {
+	versions "GL_AllowDeprecated" # Due to some 1.1 functions
+}
+configuration "gl33" {
+	versions "GL33"
+}

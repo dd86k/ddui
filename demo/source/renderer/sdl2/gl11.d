@@ -1,4 +1,6 @@
-module renderer.sdl2_gl11;
+module renderer.sdl2.gl11;
+
+version (GL_AllowDeprecated):
 
 import core.stdc.string;
 import bindbc.opengl;
@@ -14,6 +16,32 @@ __gshared GLubyte[BUFFER_SIZE * 16] color_buf; /// Color buffer
 __gshared GLuint [BUFFER_SIZE *  6] index_buf; /// Index buffer
 
 __gshared int buf_idx; /// Rectangle buffer index
+
+void initiate_renderer()
+{
+    // OpenGL setup
+    GLSupport glstatus = loadOpenGL;
+    assert(glstatus, "Failed to load OpenGL");
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_SCISSOR_TEST);
+    glEnable(GL_TEXTURE_2D);
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+    glEnableClientState(GL_COLOR_ARRAY);
+    
+    // Init textures
+    GLuint id = void;
+    glGenTextures(1, &id);
+    glBindTexture(GL_TEXTURE_2D, id);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, ATLAS_WIDTH, ATLAS_HEIGHT, 0,
+        GL_ALPHA, GL_UNSIGNED_BYTE, atlas_texture.ptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    assert(glGetError() == 0);
+}
 
 void flush()
 {
