@@ -16,4 +16,4 @@ ddui-test-*
 *.so
 *.dylib
 dub.selections.json
-examples/*/demo
+demo/demo
