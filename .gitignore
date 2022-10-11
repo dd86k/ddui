@@ -15,5 +15,6 @@ ddui-test-*
 *.dll
 *.so
 *.dylib
+*.pdb
 dub.selections.json
 demo/demo
