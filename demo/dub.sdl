@@ -25,8 +25,12 @@ buildOptions "betterC" platform="ldc"
 dflags "-fno-druntime" platform="gdc"
 
 configuration "gl11" {
+	versions "Demo_GL11"
 	versions "GL_AllowDeprecated" # Due to some 1.1 functions
 }
-configuration "gl33" {
-	versions "GL33"
+configuration "gl34" {
+	versions "Demo_GL34"
+	// GL33+ARB crash at glGenVertexArrays since it doesn't get loaded
+	// Part of GL_ARB, GL_ARB_vertex_array_object
+	versions "GL34" "GL_ARB"
 }

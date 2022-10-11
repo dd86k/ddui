@@ -1,6 +1,6 @@
-module renderer.sdl2.gl11;
+module renderer.sdl2.gl34;
 
-version (Demo_GL11):
+version (Demo_GL34):
 
 import core.stdc.string;
 import bindbc.opengl;
@@ -10,49 +10,141 @@ import demo : window, window_height, window_width;
 
 extern (C):
 
-enum BUFFER_SIZE = 16384; /// Maximum number of items in memory.
+version (OSX)
+    enum SHADER_VERSION = "#version 150\n";
+else
+    enum SHADER_VERSION = "#version 300 es\n";
 
-__gshared GLfloat[BUFFER_SIZE *  8]   tex_buf; /// Texture buffer
-__gshared GLfloat[BUFFER_SIZE *  8]  vert_buf; /// Vertex buffer
-__gshared GLubyte[BUFFER_SIZE * 16] color_buf; /// Color buffer
-__gshared GLuint [BUFFER_SIZE *  6] index_buf; /// Index buffer
+immutable const(GLchar)* vertex_source =
+    SHADER_VERSION~
+    "uniform mat4 ProjMtx;\n"~
+    "in vec2 Position;\n"~
+    "in vec2 TexCoord;\n"~
+    "in vec4 Color;\n"~
+    "out vec2 Frag_UV;\n"~
+    "out vec4 Frag_Color;\n"~
+    "void main() {\n"~
+    "   Frag_UV = TexCoord;\n"~
+    "   Frag_Color = Color;\n"~
+    "   gl_Position = ProjMtx * vec4(Position.xy, 0, 1);\n"~
+    "}\n";
+immutable const(GLchar)* fragment_source =
+    SHADER_VERSION~
+    "precision mediump float;\n"~
+    "uniform sampler2D Texture;\n"~
+    "in vec2 Frag_UV;\n"~
+    "in vec4 Frag_Color;\n"~
+    "out vec4 Out_Color;\n"~
+    "void main() {\n"~
+    "   Out_Color = Frag_Color * texture(Texture, Frag_UV.st);\n"~
+    "}\n";
 
-__gshared int buf_idx; /// Rectangle buffer index
+struct platform_vertex
+{
+    float[2] position;
+    float[2] tex; // uv
+    ubyte[4] color;
+}
+
+__gshared GLuint glprogram;
+__gshared GLuint vertex_shader;
+__gshared GLuint fragment_shader;
+
+__gshared GLint uniform_texture;
+__gshared GLint uniform_projmatrix; // Projection matrix
+__gshared GLint attrib_position;
+__gshared GLint attrib_texcoord; // UV
+__gshared GLint attrib_color;
+
+__gshared GLuint font_texture;
+
+__gshared GLuint vbo;
+__gshared GLuint ebo;
+__gshared GLuint vao;
 
 void initiate_renderer()
 {
     // OpenGL setup
     GLSupport glstatus = loadOpenGL;
     assert(glstatus, "Failed to load OpenGL");
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDisable(GL_CULL_FACE);
-    glDisable(GL_DEPTH_TEST);
-    glEnable(GL_SCISSOR_TEST);
-    glEnable(GL_TEXTURE_2D);
-    glEnableClientState(GL_VERTEX_ARRAY);
-    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-    glEnableClientState(GL_COLOR_ARRAY);
+    glprogram = glCreateProgram();
+    vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+    fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(vertex_shader, 1, &vertex_source, null);
+    glShaderSource(fragment_shader, 1, &fragment_source, null);
+    glCompileShader(vertex_shader);
+    glCompileShader(fragment_shader);
     
-    // Init textures
-    GLuint id = void;
-    glGenTextures(1, &id);
-    glBindTexture(GL_TEXTURE_2D, id);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, ATLAS_WIDTH, ATLAS_HEIGHT, 0,
-        GL_ALPHA, GL_UNSIGNED_BYTE, atlas_texture.ptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    assert(glGetError() == 0);
+    GLint status = void;
+    glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &status);
+    assert(status, "Compiling vertex shader failed");
+    glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &status);
+    assert(status, "Compiling fragment shader failed");
+    
+    glAttachShader(glprogram, vertex_shader);
+    glAttachShader(glprogram, fragment_shader);
+    glLinkProgram(glprogram);
+    
+    glGetProgramiv(glprogram, GL_LINK_STATUS, &status);
+    assert(status, "Linking GL program failed");
+    
+    uniform_texture    = glGetUniformLocation(glprogram, "Texture");
+    uniform_projmatrix = glGetUniformLocation(glprogram, "ProjMtx");
+    attrib_position    = glGetAttribLocation(glprogram,  "Position");
+    attrib_texcoord    = glGetAttribLocation(glprogram,  "TexCoord");
+    attrib_color       = glGetAttribLocation(glprogram,  "Color");
+    
+    // Buffer setup
+    {
+        glGenBuffers(1, &vbo);
+        glGenBuffers(1, &ebo);
+        assert(glGenVertexArrays, "glGenVertexArrays is null, is ARB loaded?");
+        glGenVertexArrays(1, &vao);
+        
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+        
+        glEnableVertexAttribArray(attrib_position);
+        glEnableVertexAttribArray(attrib_texcoord);
+        glEnableVertexAttribArray(attrib_color);
+        
+        GLsizei vs = platform_vertex.sizeof;
+        size_t  vp = platform_vertex.position.offsetof;
+        size_t  vt = platform_vertex.tex.offsetof;
+        size_t  vc = platform_vertex.color.offsetof;
+        
+        glVertexAttribPointer(cast(GLuint)attrib_position, 2, GL_FLOAT,         GL_FALSE, vs, cast(void*)vp);
+        glVertexAttribPointer(cast(GLuint)attrib_texcoord, 2, GL_FLOAT,         GL_FALSE, vs, cast(void*)vt);
+        glVertexAttribPointer(cast(GLuint)attrib_color,    4, GL_UNSIGNED_BYTE, GL_TRUE,  vs, cast(void*)vc);
+    }
+    
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+}
+
+void upload_atlas()
+{
+    
 }
 
 void destroy_renderer()
 {
-    
+    glDetachShader(glprogram, vertex_shader);
+    glDetachShader(glprogram, fragment_shader);
+    glDeleteShader(vertex_shader);
+    glDeleteShader(fragment_shader);
+    glDeleteProgram(glprogram);
+    //glDeleteTextures(1, &font_texture);
+    glDeleteBuffers(1, &vbo);
+    glDeleteBuffers(1, &ebo);
 }
 
 void flush()
 {
-    if (buf_idx == 0) return;
+    /*if (buf_idx == 0) return;
     
     SDL_GetWindowSize(window, &window_width, &window_height);
     
@@ -75,12 +167,12 @@ void flush()
     glMatrixMode(GL_PROJECTION);
     glPopMatrix();
     
-    buf_idx = 0;
+    buf_idx = 0;*/
 }
 
 void push_quad(mu_Rect dst, mu_Rect src, mu_Color color)
 {
-    if (buf_idx == BUFFER_SIZE) { flush(); }
+    /*if (buf_idx == BUFFER_SIZE) { flush(); }
 
     int texvert_idx = buf_idx *  8; // Texture vertex index
     int   color_idx = buf_idx * 16; // Color index
@@ -124,7 +216,7 @@ void push_quad(mu_Rect dst, mu_Rect src, mu_Color color)
     index_buf[index_idx + 2] = element_idx + 2;
     index_buf[index_idx + 3] = element_idx + 2;
     index_buf[index_idx + 4] = element_idx + 3;
-    index_buf[index_idx + 5] = element_idx + 1;
+    index_buf[index_idx + 5] = element_idx + 1;*/
 }
 
 void r_draw_rect(mu_Rect rect, mu_Color color)
@@ -194,7 +286,6 @@ void r_present()
 enum { ATLAS_WHITE = MU_ICON_MAX, ATLAS_FONT }
 enum { ATLAS_WIDTH = 128, ATLAS_HEIGHT = 128 }
 
-// Font atlas
 immutable ubyte[ATLAS_WIDTH * ATLAS_HEIGHT] atlas_texture = [
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,

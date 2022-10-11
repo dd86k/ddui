@@ -8,8 +8,10 @@ import core.stdc.stdarg;
 import bindbc.opengl;
 import bindbc.sdl, bindbc.sdl.dynload;
 import ddui;
-version (GL33) import renderer.sdl2.gl33;
-else           import renderer.sdl2.gl11;
+version (Demo_GL33)
+    import renderer.sdl2.gl33;
+else
+    import renderer.sdl2.gl11;
 
 extern (C):
 
@@ -21,6 +23,9 @@ __gshared SDL_GLContext glctx;
 
 void main()
 {
+    import std.compiler : version_major, version_minor;
+    printf("* COMPILER    : "~__VENDOR__~" v%u.%03u\n", version_major, version_minor);
+    
     // Comment this section if you plan to use
     // the bindbc-sdl:staticBC configuration.
     version (Windows)
@@ -43,12 +48,12 @@ void main()
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     version (GL33)
     {
-        SDL_GL_SetAttribute (SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+        //SDL_GL_SetAttribute (SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
         SDL_GL_SetAttribute (SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     }
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     
     // Initiate SDL window
     window = SDL_CreateWindow("Demo",
@@ -58,9 +63,12 @@ void main()
     glctx  = SDL_GL_CreateContext(window);
     
     // Print SDL version
-    SDL_version  sdlversion = void;
-    SDL_VERSION(&sdlversion);
-    with (sdlversion) printf("* SDL: %u.%u.%u\n", major, minor, patch);
+    SDL_version  sdlverconf = void, sdlverrt = void;
+    SDL_VERSION(&sdlverconf);
+    SDL_GetVersion(&sdlverrt);
+    printf("* SDL_VERSION : %u.%u.%u configured, %u.%u.%u running\n",
+        sdlverconf.major, sdlverconf.minor, sdlverconf.patch,
+        sdlverrt.major, sdlverrt.minor, sdlverrt.patch);
     
     // OpenGL setup
     initiate_renderer();
@@ -145,7 +153,8 @@ void main()
         // Flip screen
         r_present();
     }
-
+    
+    destroy_renderer();
     SDL_GL_DeleteContext(glctx);
     SDL_DestroyWindow(window);
     SDL_Quit();
