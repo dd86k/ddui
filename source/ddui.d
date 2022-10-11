@@ -552,7 +552,8 @@ void mu_end(mu_Context* ctx)
 
     /* sort root containers by zindex */
     n = cast(int)ctx.root_list.idx;
-    qsort(ctx.root_list.items.ptr, n, mu_Container.sizeof, &compare_zindex);
+    // NOTE: May cause crashes across different C runtimes (e.g., MSVC)
+    //qsort(ctx.root_list.items.ptr, n, mu_Container.sizeof, &compare_zindex);
 
     /* set root container jump commands */
     for (i = 0; i < n; i++)
