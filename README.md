@@ -17,14 +17,14 @@ for making microui and Mike Parker for bindbc-opengl and bindbc-sdl.
 - Rename all prefixes.
 - Embedded documentation.
 - Improve string handling (maybe string_t).
+- Replace FNV-1a hash by Murmurhash3-32.
+- Textbox input navigation.
+- Triangle corner hint and/or cursor change for resizable windows.
 - Fix host window resizing for current example.
 - Fix window dragging when on-top of each other for current example.
-- Support OpenGL 3.3 and/or ES 2.0.
-- Replace FNV-1a hash by Murmurhash3-32.
-- Use bsearch for searching hashes.
-- Variable z-index ordering (starting from mu_begin).
-- Textbox navigation.
-- Triangle corner hint and/or cursor change for resizable windows.
+- Fix z-index global state (window management).
+- Demo: Support OpenGL 3.3 and/or ES 2.0.
+- (Research needed) Use bsearch for searching hashes.
 - (Considering) Dedicated helper functions to aid SDL2/Allegro/GLFW integration.
 
 # Example
