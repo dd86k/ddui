@@ -71,6 +71,7 @@ void main()
         sdlverrt.major, sdlverrt.minor, sdlverrt.patch);
     
     // OpenGL setup
+    printf("* CONFIG      : "~CONFIGURATION~"\n");
     initiate_renderer();
     printf("* GL_RENDERER : %s\n", glGetString(GL_RENDERER));
     printf("* GL_VERSION  : %s\n", glGetString(GL_VERSION));

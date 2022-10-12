@@ -10,6 +10,8 @@ import demo : window, window_height, window_width;
 
 extern (C):
 
+enum CONFIGURATION = "GL11";
+
 enum BUFFER_SIZE = 16384; /// Maximum number of items in memory.
 
 __gshared GLfloat[BUFFER_SIZE *  8]   tex_buf; /// Texture buffer

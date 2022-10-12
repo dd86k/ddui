@@ -1,6 +1,6 @@
-module renderer.sdl2.gl34;
+module renderer.sdl2.gl33;
 
-version (Demo_GL34):
+version (Demo_GL33):
 
 import core.stdc.string;
 import bindbc.opengl;
@@ -9,6 +9,8 @@ import ddui;
 import demo : window, window_height, window_width;
 
 extern (C):
+
+enum CONFIGURATION = "GL33";
 
 version (OSX)
     enum SHADER_VERSION = "#version 150\n";
