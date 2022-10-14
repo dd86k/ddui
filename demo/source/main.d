@@ -49,7 +49,6 @@ void main()
     version (GL33)
     {
         //SDL_GL_SetAttribute (SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
-        SDL_GL_SetAttribute (SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     }
@@ -84,7 +83,7 @@ void main()
     
     GAME: while (true)
     {
-        // Transmit SDL input events to DDUI
+        // Transmit SDL input events to UI
         SDL_Event e = void;
         while (SDL_PollEvent(&e))
         {
@@ -129,14 +128,13 @@ void main()
         }
         
         // Process UI
-        // NOTE: Currently the order of windows influences their z-index.
         mu_begin(&ui);
         log_window(&ui);
         test_window(&ui);
         style_window(&ui);
         mu_end(&ui);
         
-        // Process commands
+        // Process rendering commands from UI
         r_clear(mu_Color(cast(ubyte)bg[0], cast(ubyte)bg[1], cast(ubyte)bg[2], 255));
         mu_Command *cmd = null;
         while (mu_next_command(&ui, &cmd))
@@ -151,7 +149,7 @@ void main()
             }
         }
     
-        // Flip screen
+        // Render screen
         r_present();
     }
     
@@ -172,7 +170,7 @@ void test_window(mu_Context *ctx)
         win.rect.w = mu_max(win.rect.w, 240);
         win.rect.h = mu_max(win.rect.h, 300);
         
-        /* window info */
+        // window info
         if (mu_header(ctx, "Window Info"))
         {
             mu_Container *win2 = mu_get_current_container(ctx);
@@ -185,7 +183,7 @@ void test_window(mu_Context *ctx)
             sprintf(buf.ptr, "%d, %d", win2.rect.w, win2.rect.h); mu_label(ctx, buf.ptr);
         }
         
-        /* labels + buttons */
+        // labels + buttons
         if (mu_header_ex(ctx, "Test Buttons", MU_OPT_EXPANDED))
         {
             static immutable int[3] r2 = [ 86, -110, -1 ];
@@ -203,11 +201,11 @@ void test_window(mu_Context *ctx)
             }
         }
         
-        /* tree */
+        // tree
         if (mu_header_ex(ctx, "Tree and Text", MU_OPT_EXPANDED))
         {
-            static immutable int[2] r3 = [ 140, -1 ];
-            mu_layout_row(ctx, 2, r3.ptr, 0);
+            static immutable int[2] cols1 = [ 140, -1 ];
+            mu_layout_row(ctx, 2, cols1.ptr, 0);
             mu_layout_begin_column(ctx);
             if (mu_begin_treenode(ctx, "Test 1")) {
                 if (mu_begin_treenode(ctx, "Test 1a")) {
@@ -224,8 +222,8 @@ void test_window(mu_Context *ctx)
             }
             if (mu_begin_treenode(ctx, "Test 2"))
             {
-                static immutable int[2] r4 = [ 54, 54 ];
-                mu_layout_row(ctx, 2, r4.ptr, 0);
+                static immutable int[2] cols2 = [ 54, 54 ];
+                mu_layout_row(ctx, 2, cols2.ptr, 0);
                 if (mu_button(ctx, "Button 3")) { write_log("Pressed button 3"); }
                 if (mu_button(ctx, "Button 4")) { write_log("Pressed button 4"); }
                 if (mu_button(ctx, "Button 5")) { write_log("Pressed button 5"); }
@@ -243,8 +241,8 @@ void test_window(mu_Context *ctx)
             mu_layout_end_column(ctx);
             
             mu_layout_begin_column(ctx);
-            static immutable int[1] r5 = [ -1 ];
-            mu_layout_row(ctx, 1, r5.ptr, 0);
+            static immutable int[1] cols3 = [ -1 ];
+            mu_layout_row(ctx, 1, cols3.ptr, 0);
             mu_text(ctx, 
                 "Lorem ipsum dolor sit amet, consectetur adipiscing "~
                 "elit. Maecenas lacinia, sem eu lacinia molestie, mi risus faucibus "~
@@ -255,17 +253,17 @@ void test_window(mu_Context *ctx)
         /* background color sliders */
         if (mu_header_ex(ctx, "Background Color", MU_OPT_EXPANDED))
         {
-            static immutable int[2] r6 = [ -78, -1 ];
-            mu_layout_row(ctx, 2, r6.ptr, 74);
-            /* sliders */
+            static immutable int[2] cols4 = [ -78, -1 ];
+            mu_layout_row(ctx, 2, cols4.ptr, 74);
+            // sliders
             mu_layout_begin_column(ctx);
-            static immutable int[2] r7 = [ 46, -1 ];
-            mu_layout_row(ctx, 2, r7.ptr, 0);
+            static immutable int[2] cols5 = [ 46, -1 ];
+            mu_layout_row(ctx, 2, cols5.ptr, 0);
             mu_label(ctx, "Red:");   mu_slider(ctx, &bg[0], 0, 255);
             mu_label(ctx, "Green:"); mu_slider(ctx, &bg[1], 0, 255);
             mu_label(ctx, "Blue:");  mu_slider(ctx, &bg[2], 0, 255);
             mu_layout_end_column(ctx);
-            /* color preview */
+            // color preview
             mu_Rect r = mu_layout_next(ctx);
             mu_draw_rect(ctx, r,
                 mu_Color(cast(ubyte)bg[0], cast(ubyte)bg[1], cast(ubyte)bg[2], 255));
@@ -289,7 +287,12 @@ int uint8_slider(mu_Context *ctx, ubyte *value, int low, int high)
     return res;
 }
 
-struct color_t { const(char) *label; int idx; }
+struct color_t
+{
+    const(char) *label;
+    int idx;
+}
+
 immutable color_t[] colors = [
     { "text",         MU_COLOR_TEXT        },
     { "border",       MU_COLOR_BORDER      },

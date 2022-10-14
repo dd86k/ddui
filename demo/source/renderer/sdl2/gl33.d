@@ -66,9 +66,11 @@ __gshared GLuint vao;
 
 void initiate_renderer()
 {
-    // OpenGL setup
     GLSupport glstatus = loadOpenGL;
-    assert(glstatus, "Failed to load OpenGL");
+    assert(glstatus >= GLSupport.gl33, "Failed to load OpenGL 3.3");
+    assert(glGenVertexArrays, "glGenVertexArrays is null, is ARB loaded?");
+    
+    // OpenGL setup
     glprogram = glCreateProgram();
     vertex_shader = glCreateShader(GL_VERTEX_SHADER);
     fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -100,7 +102,6 @@ void initiate_renderer()
     {
         glGenBuffers(1, &vbo);
         glGenBuffers(1, &ebo);
-        assert(glGenVertexArrays, "glGenVertexArrays is null, is ARB loaded?");
         glGenVertexArrays(1, &vao);
         
         glBindVertexArray(vao);
