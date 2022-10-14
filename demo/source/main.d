@@ -1,7 +1,7 @@
 /// DDUI SDL2 OpenGL1.1 example
 module demo;
 
-import core.stdc.stdio : printf, sprintf;
+import core.stdc.stdio : printf, sprintf, snprintf;
 import core.stdc.string;
 import core.stdc.ctype;
 import core.stdc.stdarg;
@@ -160,13 +160,12 @@ void main(int argc, const(char) **args)
         mu_end(ui);
         sw_ui.start;
         
-        // Process rendering commands from UI
+        // Clear screen and process rendering commands from UI
         stat_commands = uictx.command_list.idx;
         stat_id       = uictx.id_stack.idx;
         sw_commands.start;
         r_clear(mu_Color(cast(ubyte)bg[0], cast(ubyte)bg[1], cast(ubyte)bg[2], 255));
-        mu_Command *cmd = null;
-        while (mu_next_command(ui, &cmd))
+        foreach (ref mu_Command cmd ; mu_command_range(ui))
         {
             switch (cmd.type)
             {

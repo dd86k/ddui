@@ -37,7 +37,7 @@ enum MU_VERSION = "0.0.1";
 
 enum MU_TEXTSTACK_SIZE = 1024;
 
-enum MU_COMMANDLIST_SIZE = (256 * 1024);
+enum MU_COMMANDLIST_SIZE = 4096; //(256 * 1024);
 enum MU_ROOTLIST_SIZE = 32;
 enum MU_CONTAINERSTACK_SIZE = 32;
 enum MU_CLIPSTACK_SIZE = 32;
@@ -206,14 +206,14 @@ struct mu_PoolItem
 ///
 struct mu_BaseCommand
 {
-    int type, size;
+    int type;
 }
 
-///
+/// These are used to skip command items to the next valid one.
 struct mu_JumpCommand
 {
     mu_BaseCommand base;
-    void* dst;
+    int dst_idx;
 }
 
 ///
@@ -283,7 +283,8 @@ struct mu_Layout
 ///
 struct mu_Container
 {
-    mu_Command* head, tail;
+    //mu_Command* head, tail;
+    int head_idx, tail_idx;
     mu_Rect rect;
     mu_Rect body_;
     mu_Vec2 content_size;
@@ -339,7 +340,7 @@ struct mu_Context
     // stacks
     //
     
-    mu_Stack!(char,          MU_COMMANDLIST_SIZE)    command_list;
+    mu_Stack!(mu_Command,    MU_COMMANDLIST_SIZE)    command_list;
     mu_Stack!(mu_Container*, MU_ROOTLIST_SIZE)       root_list;
     mu_Stack!(mu_Container*, MU_CONTAINERSTACK_SIZE) container_stack;
     mu_Stack!(mu_Rect,       MU_CLIPSTACK_SIZE)      clip_stack;
@@ -550,20 +551,20 @@ int mu_compare_zindex(const void* a, const void* b)
 
 void mu_end(mu_Context* ctx)
 {
-    /* check stacks */
+    // check stacks
     assert(ctx.container_stack.idx == 0, "ctx.container_stack.idx == 0");
     assert(ctx.clip_stack.idx == 0, "ctx.clip_stack.idx == 0");
     assert(ctx.id_stack.idx == 0, "ctx.id_stack.idx == 0");
     assert(ctx.layout_stack.idx == 0, "ctx.layout_stack.idx == 0");
 
-    /* handle scroll input */
+    // handle scroll input
     if (ctx.scroll_target)
     {
         ctx.scroll_target.scroll.x += ctx.scroll_delta.x;
         ctx.scroll_target.scroll.y += ctx.scroll_delta.y;
     }
 
-    /* unset focus if focus id was not touched this frame */
+    // unset focus if focus id was not touched this frame
     if (!ctx.updated_focus)
     {
         ctx.focus = 0;
@@ -571,7 +572,7 @@ void mu_end(mu_Context* ctx)
     
     ctx.updated_focus = 0;
 
-    /* bring hover root to front if mouse was pressed */
+    // bring hover root to front if mouse was pressed
     if (ctx.mouse_pressed && ctx.next_hover_root &&
         ctx.next_hover_root.zindex < ctx.last_zindex &&
         ctx.next_hover_root.zindex)
@@ -579,14 +580,14 @@ void mu_end(mu_Context* ctx)
         mu_bring_to_front(ctx, ctx.next_hover_root);
     }
 
-    /* reset input state */
+    // reset input state
     ctx.input_text[0] = '\0';
     ctx.key_pressed = 0;
     ctx.mouse_pressed = 0;
     ctx.scroll_delta = mu_Vec2(0, 0);
     ctx.last_mouse_pos = ctx.mouse_pos;
 
-    /* sort root containers by zindex */
+    // sort root containers by zindex
     size_t n = ctx.root_list.idx;
     // NOTE: May cause crashes across different C runtimes (e.g., MSVC)
     //qsort(ctx.root_list.items.ptr, n, (mu_Container*).sizeof, &mu_compare_zindex);
@@ -594,18 +595,17 @@ void mu_end(mu_Context* ctx)
     // Set root container jump commands
     // First container should have the first command jump to it
     mu_Command* cmd = cast(mu_Command*) ctx.command_list.items;
-    cmd.jump.dst = cast(char*) ctx.root_list.items[0].head + mu_JumpCommand.sizeof;
+    cmd.jump.dst_idx = ctx.root_list.items[0].head_idx + 1;
     
     // Otherwise set the previous container's tail to jump to this one
-    for (size_t i = 1; i < n; i++)
+    for (size_t i = 1; i < n; ++i)
     {
         mu_Container* cnt  = ctx.root_list.items[i];
         mu_Container* prev = ctx.root_list.items[i - 1];
-        prev.tail.jump.dst = cast(char*) cnt.head + mu_JumpCommand.sizeof;
-        /* make the last container's tail jump to the end of command list */
+        ctx.command_list.items[prev.tail_idx].jump.dst_idx = cnt.head_idx + 1;
         if (i == n - 1)
         {
-            cnt.tail.jump.dst = ctx.command_list.items.ptr + ctx.command_list.idx;
+            ctx.command_list.items[cnt.tail_idx].jump.dst_idx = cast(int)ctx.command_list.idx;
         }
     }
 }
@@ -842,48 +842,52 @@ void mu_input_text(mu_Context* ctx, const(char)* text)
 ** commandlist
 **============================================================================*/
 
-mu_Command* mu_push_command(mu_Context* ctx, int type, int size)
+mu_Command* mu_push_command(mu_Context* ctx, int type/*, int size*/)
 {
     mu_Command* cmd = cast(mu_Command*)(ctx.command_list.items.ptr + ctx.command_list.idx);
-    assert(ctx.command_list.idx + size < MU_COMMANDLIST_SIZE,
-        "ctx.command_list.idx + size < MU_COMMANDLIST_SIZE");
     cmd.base.type = type;
-    cmd.base.size = size;
-    ctx.command_list.idx += size;
+    ++ctx.command_list.idx;
     return cmd;
 }
 
+mu_Command[] mu_command_range(mu_Context* ctx)
+{
+    return ctx.command_list.items.ptr[0 .. ctx.command_list.idx];
+}
+
+deprecated("Use mu_get_next_command. This will be removed in the next version.")
 int mu_next_command(mu_Context* ctx, mu_Command** cmd)
 {
     if (*cmd)
     {
-        *cmd = cast(mu_Command*)((cast(char*)*cmd) + (*cmd).base.size);
+        *cmd = *cmd + 1;
     }
-    else
+    else // First
     {
-        *cmd = cast(mu_Command*) ctx.command_list.items.ptr;
+        *cmd = ctx.command_list.items.ptr;
     }
-    while (cast(char*)*cmd != ctx.command_list.items.ptr + ctx.command_list.idx)
+    while (*cmd != &ctx.command_list.items[ctx.command_list.idx])
     {
         if ((*cmd).type != MU_COMMAND_JUMP)
         {
             return 1;
         }
-        *cmd = cast(mu_Command*)(*cmd).jump.dst;
+        *cmd = &ctx.command_list.items[(*cmd).jump.dst_idx];
     }
     return 0;
 }
 
-mu_Command* mu_push_jump(mu_Context* ctx, mu_Command* dst)
+int mu_push_jump(mu_Context* ctx, int idx)
 {
-    mu_Command* cmd = mu_push_command(ctx, MU_COMMAND_JUMP, mu_JumpCommand.sizeof);
-    cmd.jump.dst = dst;
-    return cmd;
+    mu_Command *cmd = mu_push_command(ctx, MU_COMMAND_JUMP);
+    cmd.jump.dst_idx = idx;
+    assert(cmd == &ctx.command_list.items[ctx.command_list.idx - 1]);
+    return cast(int)(ctx.command_list.idx - 1);
 }
 
 void mu_set_clip(mu_Context* ctx, mu_Rect rect)
 {
-    mu_Command* cmd = mu_push_command(ctx, MU_COMMAND_CLIP, mu_ClipCommand.sizeof);
+    mu_Command* cmd = mu_push_command(ctx, MU_COMMAND_CLIP/*, mu_ClipCommand.sizeof*/);
     cmd.clip.rect = rect;
 }
 
@@ -892,7 +896,7 @@ void mu_draw_rect(mu_Context* ctx, mu_Rect rect, mu_Color color)
     rect = mu_intersect_rects(rect, mu_get_clip_rect(ctx));
     if (rect.w > 0 && rect.h > 0)
     {
-        mu_Command* cmd = mu_push_command(ctx, MU_COMMAND_RECT, mu_RectCommand.sizeof);
+        mu_Command* cmd = mu_push_command(ctx, MU_COMMAND_RECT/*, mu_RectCommand.sizeof*/);
         cmd.rect.rect = rect;
         cmd.rect.color = color;
     }
@@ -926,7 +930,7 @@ void mu_draw_text(mu_Context* ctx, mu_Font font, const(char)* str, int len,
         len = cast(int)strlen(str);
     }
     
-    mu_Command* cmd = mu_push_command(ctx, MU_COMMAND_TEXT, cast(int)(mu_TextCommand.sizeof + len));
+    mu_Command* cmd = mu_push_command(ctx, MU_COMMAND_TEXT/*, cast(int)(mu_TextCommand.sizeof + len)*/);
     memcpy(cmd.text.str.ptr, str, len);
     cmd.text.str[len] = '\0';
     cmd.text.pos = pos;
@@ -953,7 +957,7 @@ void mu_draw_icon(mu_Context* ctx, int id, mu_Rect rect, mu_Color color)
         mu_set_clip(ctx, mu_get_clip_rect(ctx));
     }
     // do icon command
-    mu_Command* cmd = mu_push_command(ctx, MU_COMMAND_ICON, mu_IconCommand.sizeof);
+    mu_Command* cmd = mu_push_command(ctx, MU_COMMAND_ICON/*, mu_IconCommand.sizeof*/);
     cmd.icon.id = id;
     cmd.icon.rect = rect;
     cmd.icon.color = color;
@@ -1104,7 +1108,7 @@ int mu_in_hover_root(mu_Context* ctx)
         }
         // only root containers have their `head` field set; stop searching if we've
         // reached the current root container
-        if (ctx.container_stack.items[i].head)
+        if (ctx.container_stack.items[i].head_idx != -1)
         {
             break;
         }
@@ -1644,7 +1648,7 @@ void mu_begin_root_container(mu_Context* ctx, mu_Container* cnt)
     ctx.container_stack.push(cnt);
     // push container to roots list and push head command
     ctx.root_list.push(cnt);
-    cnt.head = mu_push_jump(ctx, null);
+    cnt.head_idx = mu_push_jump(ctx, -1);
     // set as hover root if the mouse is overlapping this container and it has a
     // higher zindex than the current hover root
     if (rect_overlaps_vec2(cnt.rect, ctx.mouse_pos) &&
@@ -1663,8 +1667,8 @@ void mu_end_root_container(mu_Context* ctx)
     // push tail 'goto' jump command and set head 'skip' command. the final steps
     // on initing these are done in mu_end()
     mu_Container* cnt = mu_get_current_container(ctx);
-    cnt.tail = mu_push_jump(ctx, null);
-    cnt.head.jump.dst = ctx.command_list.items.ptr + ctx.command_list.idx;
+    cnt.tail_idx = mu_push_jump(ctx, -1);
+    ctx.command_list.items[cnt.head_idx].jump.dst_idx = cast(int)ctx.command_list.idx;
     // pop base clip rect and container
     mu_pop_clip_rect(ctx);
     mu_pop_container(ctx);
