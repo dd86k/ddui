@@ -15,9 +15,11 @@ to be implemented in your application in order to work.
 # Features
 
 - BetterC compatibility.
+- Demo: Fixed host window resizing (clipping).
 
 # Roadmap
 
+- Simplify codebase.
 - Rename all prefixes.
 - Embedded documentation.
 - Improve string handling (maybe string_t, at least reduce dependency on strlen).

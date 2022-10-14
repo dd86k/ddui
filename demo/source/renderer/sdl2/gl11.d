@@ -177,7 +177,7 @@ int r_get_text_height()
 void r_set_clip_rect(mu_Rect rect)
 {
     flush();
-    glScissor(rect.x, window_height - (rect.y + rect.h), rect.w, rect.h);
+    glScissor(rect.x, rect.y, rect.w, rect.h);
 }
 
 void r_clear(mu_Color clr)
