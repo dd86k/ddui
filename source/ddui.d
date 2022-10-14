@@ -46,7 +46,7 @@ enum MU_LAYOUTSTACK_SIZE = 16;
 enum MU_CONTAINERPOOL_SIZE = 48;
 enum MU_TREENODEPOOL_SIZE = 48;
 enum MU_MAX_WIDTHS = 16;
-enum MU_MAX_FMT = 127;
+enum MU_MAX_FMT = 64;
 alias MU_REAL = float;
 enum const(char)* MU_REAL_FMT = "%.3g";
 enum const(char)* MU_SLIDER_FMT = "%.2f";
@@ -239,7 +239,7 @@ struct mu_TextCommand
     mu_Vec2 pos;
     mu_Color color;
     //TODO: Consider adding size_t length
-    char *str;
+    char[MU_TEXTSTACK_SIZE] str;
 }
 
 ///
@@ -345,7 +345,6 @@ struct mu_Context
     mu_Stack!(mu_Rect,       MU_CLIPSTACK_SIZE)      clip_stack;
     mu_Stack!(mu_Id,         MU_IDSTACK_SIZE)        id_stack;
     mu_Stack!(mu_Layout,     MU_LAYOUTSTACK_SIZE)    layout_stack;
-    mu_Stack!(char,          MU_TEXTSTACK_SIZE)      text_stack;
     
     //
     // retained state pools
@@ -367,7 +366,7 @@ struct mu_Context
     int mouse_pressed;
     int key_down;
     int key_pressed;
-    char[MU_TEXT_LEN] input_text;
+    char[MU_TEXT_LEN] input_text; //TODO: Move into text_stack?
 }
 
 /// Creates a button.
@@ -534,7 +533,6 @@ void mu_begin(mu_Context* ctx)
     assert(ctx.text_width && ctx.text_height, "ctx.text_width && ctx.text_height");
     ctx.command_list.idx = 0;
     ctx.root_list.idx = 0;
-    ctx.text_stack.idx = 0;
     ctx.scroll_target = null;
     ctx.hover_root = ctx.next_hover_root;
     ctx.next_hover_root = null;
@@ -717,7 +715,7 @@ mu_Container* mu_get_current_container(mu_Context* ctx)
     return ctx.container_stack.items[ctx.container_stack.idx - 1];
 }
 
-mu_Container* mu_get_container(mu_Context* ctx, mu_Id id, int opt)
+mu_Container* mu_get_container2(mu_Context* ctx, mu_Id id, int opt)
 {
     // try to get existing container from pool
     int idx = mu_pool_get(ctx, ctx.container_pool.ptr, MU_CONTAINERPOOL_SIZE, id);
@@ -746,12 +744,11 @@ mu_Container* mu_get_container(mu_Context* ctx, mu_Id id, int opt)
 mu_Container* mu_get_container(mu_Context* ctx, const(char)* name)
 {
     mu_Id id = mu_get_id(ctx, name, cast(int) strlen(name));
-    return mu_get_container(ctx, id, 0);
+    return mu_get_container2(ctx, id, 0);
 }
 
 void mu_bring_to_front(mu_Context* ctx, mu_Container* cnt)
 {
-    printf("cnt.zindex=%u\n", cnt.zindex);
     cnt.zindex = ++ctx.last_zindex;
 }
 
@@ -890,16 +887,6 @@ void mu_set_clip(mu_Context* ctx, mu_Rect rect)
     cmd.clip.rect = rect;
 }
 
-char* mu_push_text(mu_Context* ctx, const(char)* str, size_t len) {
-    char* str_start = &ctx.text_stack.items[ctx.text_stack.idx];
-    assert(ctx.text_stack.idx + len + 1 < MU_TEXTSTACK_SIZE);
-
-    memcpy(str_start, str, len);
-    str_start[len] = '\0';
-    ctx.text_stack.idx += len + 1;
-    return str_start;
-}
-
 void mu_draw_rect(mu_Context* ctx, mu_Rect rect, mu_Color color)
 {
     rect = mu_intersect_rects(rect, mu_get_clip_rect(ctx));
@@ -939,11 +926,9 @@ void mu_draw_text(mu_Context* ctx, mu_Font font, const(char)* str, int len,
         len = cast(int)strlen(str);
     }
     
-    //mu_Command* cmd = mu_push_command(ctx, MU_COMMAND_TEXT, cast(int)(mu_TextCommand.sizeof + len));
-    //memcpy(cmd.text.str.ptr, str, len);
-    //cmd.text.str[len] = '\0';
     mu_Command* cmd = mu_push_command(ctx, MU_COMMAND_TEXT, cast(int)(mu_TextCommand.sizeof + len));
-    cmd.text.str = mu_push_text(ctx, str, len);
+    memcpy(cmd.text.str.ptr, str, len);
+    cmd.text.str[len] = '\0';
     cmd.text.pos = pos;
     cmd.text.color = color;
     cmd.text.font = font;
@@ -1451,7 +1436,7 @@ int mu_slider_ex(mu_Context* ctx, mu_Real* value, mu_Real low, mu_Real high,
     mu_draw_control_frame(ctx, id, thumb, MU_COLOR_BUTTON, opt);
 
     // draw text
-    char[MU_MAX_FMT + 1] buf = void;
+    char[MU_MAX_FMT] buf = void;
     sprintf(buf.ptr, fmt, v);
     mu_draw_control_text(ctx, buf.ptr, base, MU_COLOR_TEXT, opt);
 
@@ -1461,7 +1446,7 @@ int mu_slider_ex(mu_Context* ctx, mu_Real* value, mu_Real low, mu_Real high,
 int mu_number_ex(mu_Context* ctx, mu_Real* value, mu_Real step,
     const(char)* fmt, int opt)
 {
-    char[MU_MAX_FMT + 1] buf = void;
+    char[MU_MAX_FMT] buf = void;
     int res = 0;
     mu_Id id = mu_get_id(ctx, &value, value.sizeof); // sizeof(value)
     mu_Rect base = mu_layout_next(ctx);
@@ -1689,7 +1674,7 @@ int mu_begin_window_ex(mu_Context* ctx, const(char)* title, mu_Rect rect, int op
 {
     mu_Rect body_;
     mu_Id id = mu_get_id(ctx, title, cast(int)strlen(title));
-    mu_Container* cnt = mu_get_container(ctx, id, opt);
+    mu_Container* cnt = mu_get_container2(ctx, id, opt);
     if (!cnt || !cnt.open)
     {
         return 0;
@@ -1813,7 +1798,7 @@ mu_Container* mu_begin_panel_ex(mu_Context* ctx, const(char)* name, int opt)
 {
     mu_Container* cnt;
     mu_push_id(ctx, name, cast(int)strlen(name));
-    cnt = mu_get_container(ctx, ctx.last_id, opt);
+    cnt = mu_get_container2(ctx, ctx.last_id, opt);
     cnt.rect = mu_layout_next(ctx);
     if (~opt & MU_OPT_NOFRAME)
     {

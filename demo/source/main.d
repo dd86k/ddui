@@ -7,7 +7,7 @@ import core.stdc.ctype;
 import core.stdc.stdarg;
 import bindbc.opengl;
 import bindbc.sdl, bindbc.sdl.dynload;
-import ddui;
+import ddui, stopwatch;
 version (Demo_GL33)
     import renderer.sdl2.gl33;
 else
@@ -21,8 +21,18 @@ __gshared int window_height = 550;
 __gshared SDL_Window *window;
 __gshared SDL_GLContext glctx;
 
-void main()
+void main(int argc, const(char) **args)
 {
+    bool cli_debug;
+    
+    for (int argi = 1; argi < argc; ++argi)
+    {
+        const(char) *arg = args[argi];
+        
+        if (strcmp(arg, "--debug") == 0)
+            cli_debug = true;
+    }
+    
     import std.compiler : version_major, version_minor;
     printf("* COMPILER    : "~__VENDOR__~" v%u.%03u\n", version_major, version_minor);
     
@@ -76,28 +86,32 @@ void main()
     printf("* GL_VERSION  : %s\n", glGetString(GL_VERSION));
     
     // Init UI
-    mu_Context ui = void;
-    mu_init(&ui);
+    mu_Context uictx = void;
+    mu_init(&uictx);
+    mu_Context *ui = &uictx;
     ui.text_width  = &text_width;
     ui.text_height = &text_height;
+    
+    stopwatch_t.setup();
     
     GAME: while (true)
     {
         // Transmit SDL input events to UI
         SDL_Event e = void;
+        sw_input.start;
         while (SDL_PollEvent(&e))
         {
             switch (e.type)
             {
                 case SDL_QUIT: break GAME;
                 case SDL_MOUSEMOTION:
-                    mu_input_mousemove(&ui, e.motion.x, e.motion.y);
+                    mu_input_mousemove(ui, e.motion.x, e.motion.y);
                     continue;
                 case SDL_MOUSEWHEEL:
-                    mu_input_scroll(&ui, 0, e.wheel.y * -30);
+                    mu_input_scroll(ui, 0, e.wheel.y * -30);
                     continue;
                 case SDL_TEXTINPUT:
-                    mu_input_text(&ui, e.text.text.ptr);
+                    mu_input_text(ui, e.text.text.ptr);
                     continue;
 
                 case SDL_MOUSEBUTTONDOWN, SDL_MOUSEBUTTONUP:
@@ -105,10 +119,10 @@ void main()
                     if (!b) continue;
                     switch (e.type) {
                     case SDL_MOUSEBUTTONDOWN:
-                        mu_input_mousedown(&ui, e.button.x, e.button.y, b);
+                        mu_input_mousedown(ui, e.button.x, e.button.y, b);
                         continue;
                     case SDL_MOUSEBUTTONUP:
-                        mu_input_mouseup(&ui, e.button.x, e.button.y, b);
+                        mu_input_mouseup(ui, e.button.x, e.button.y, b);
                         continue;
                     default: continue;
                     }
@@ -117,8 +131,8 @@ void main()
                     int k = key_map[e.key.keysym.sym & 0xff];
                     if (!k) continue;
                     switch (e.type) {
-                    case SDL_KEYDOWN: mu_input_keydown(&ui, k); continue;
-                    case SDL_KEYUP:   mu_input_keyup(&ui, k);   continue;
+                    case SDL_KEYDOWN: mu_input_keydown(ui, k); continue;
+                    case SDL_KEYUP:   mu_input_keyup(ui, k);   continue;
                     default:
                     }
                     continue;
@@ -126,31 +140,49 @@ void main()
                 default:
             }
         }
+        sw_input.stop;
         
         // Process UI
-        mu_begin(&ui);
-        log_window(&ui);
-        test_window(&ui);
-        style_window(&ui);
-        mu_end(&ui);
+        sw_ui.stop;
+        mu_begin(ui);
+        if (cli_debug)
+        {
+            debug_window(ui);
+            log_window(ui);
+            style_window(ui);
+        }
+        else
+        {
+            log_window(ui);
+            test_window(ui);
+            style_window(ui);
+        }
+        mu_end(ui);
+        sw_ui.start;
         
         // Process rendering commands from UI
+        stat_commands = uictx.command_list.idx;
+        stat_id       = uictx.id_stack.idx;
+        sw_commands.start;
         r_clear(mu_Color(cast(ubyte)bg[0], cast(ubyte)bg[1], cast(ubyte)bg[2], 255));
         mu_Command *cmd = null;
-        while (mu_next_command(&ui, &cmd))
+        while (mu_next_command(ui, &cmd))
         {
             switch (cmd.type)
             {
-                case MU_COMMAND_TEXT: r_draw_text(cmd.text.str, cmd.text.pos, cmd.text.color); continue;
+                case MU_COMMAND_TEXT: r_draw_text(cmd.text.str.ptr, cmd.text.pos, cmd.text.color); continue;
                 case MU_COMMAND_RECT: r_draw_rect(cmd.rect.rect, cmd.rect.color); continue;
                 case MU_COMMAND_ICON: r_draw_icon(cmd.icon.id, cmd.icon.rect, cmd.icon.color); continue;
                 case MU_COMMAND_CLIP: r_set_clip_rect(cmd.clip.rect); continue;
                 default: continue;
             }
         }
+        sw_commands.stop;
     
         // Render screen
+        sw_render.start;
         r_present();
+        sw_render.stop;
     }
     
     destroy_renderer();
@@ -161,9 +193,67 @@ void main()
 
 private:
 
+__gshared stopwatch_t sw_input;
+__gshared stopwatch_t sw_ui;
+__gshared stopwatch_t sw_commands;
+__gshared stopwatch_t sw_render;
+
+__gshared size_t stat_commands;
+__gshared size_t stat_id;
+
+void debug_window(mu_Context *ctx)
+{
+    if (mu_begin_window(ctx, "Debug", mu_Rect(40, 40, 300, 450)))
+    {
+        if (mu_header_ex(ctx, "Times", MU_OPT_EXPANDED))
+        {
+            enum bufsz = 32;
+            char[bufsz] buf = void;
+            static immutable const(char)* fmt = "%.3f ms";
+            
+            static immutable int[2] cols = [ 80, -1 ];
+            mu_layout_row(ctx, 2, cols.ptr, 0);
+            
+            snprintf(buf.ptr, bufsz, fmt, sw_input.ms);
+            mu_label(ctx, "Input:");
+            mu_label(ctx, buf.ptr);
+            
+            snprintf(buf.ptr, bufsz, fmt, sw_ui.ms);
+            mu_label(ctx, "UI:");
+            mu_label(ctx, buf.ptr);
+            
+            snprintf(buf.ptr, bufsz, fmt, sw_commands.ms);
+            mu_label(ctx, "Commands:");
+            mu_label(ctx, buf.ptr);
+            
+            snprintf(buf.ptr, bufsz, fmt, sw_render.ms);
+            mu_label(ctx, "Render:");
+            mu_label(ctx, buf.ptr);
+        }
+        
+        if (mu_header_ex(ctx, "Stats", MU_OPT_EXPANDED))
+        {
+            enum bufsz = 32;
+            char[bufsz] buf = void;
+            
+            static immutable int[2] cols = [ 80, -1 ];
+            mu_layout_row(ctx, 2, cols.ptr, 0);
+            
+            snprintf(buf.ptr, 32, "%zu", stat_commands);
+            mu_label(ctx, "Commands:");
+            mu_label(ctx, buf.ptr);
+            
+            snprintf(buf.ptr, 32, "%zu", stat_id);
+            mu_label(ctx, "IDs:");
+            mu_label(ctx, buf.ptr);
+        }
+        
+        mu_end_window(ctx);
+    }
+}
+
 void test_window(mu_Context *ctx)
 {
-    /* do window */
     if (mu_begin_window(ctx, "Demo Window", mu_Rect(40, 40, 300, 450)))
     {
         mu_Container *win = mu_get_current_container(ctx);
@@ -175,8 +265,8 @@ void test_window(mu_Context *ctx)
         {
             mu_Container *win2 = mu_get_current_container(ctx);
             char[64] buf = void;
-            static immutable int[2] r = [ 54, -1 ];
-            mu_layout_row(ctx, 2, r.ptr, 0);
+            static immutable int[2] cols = [ 54, -1 ];
+            mu_layout_row(ctx, 2, cols.ptr, 0);
             mu_label(ctx, "Position:");
             sprintf(buf.ptr, "%d, %d", win2.rect.x, win2.rect.y); mu_label(ctx, buf.ptr);
             mu_label(ctx, "Size:");
@@ -186,8 +276,8 @@ void test_window(mu_Context *ctx)
         // labels + buttons
         if (mu_header_ex(ctx, "Test Buttons", MU_OPT_EXPANDED))
         {
-            static immutable int[3] r2 = [ 86, -110, -1 ];
-            mu_layout_row(ctx, 3, r2.ptr, 0);
+            static immutable int[3] cols = [ 86, -110, -1 ];
+            mu_layout_row(ctx, 3, cols.ptr, 0);
             mu_label(ctx, "Test buttons 1:");
             if (mu_button(ctx, "Button 1")) { write_log("Pressed button 1"); }
             if (mu_button(ctx, "Button 2")) { write_log("Pressed button 2"); }
@@ -318,7 +408,7 @@ void style_window(mu_Context *ctx)
         int sw = cast(int)(mu_get_current_container(ctx).body_.w * 0.14f); // ~1/5
         int[6] r = [ 80, sw, sw, sw, sw, -1 ];
         mu_layout_row(ctx, 6, r.ptr, 0);
-        for (int i = 0; colors[i].label; ++i) {
+        for (size_t i; colors[i].label; ++i) {
             mu_label(ctx, colors[i].label);
             uint8_slider(ctx, &ctx.style.colors[i].r, 0, 255);
             uint8_slider(ctx, &ctx.style.colors[i].g, 0, 255);
