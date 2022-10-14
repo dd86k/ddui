@@ -35,7 +35,7 @@ extern (C):
 
 enum MU_VERSION = "0.0.1";
 
-enum MU_TEXT_BUFFER = 1024;
+enum MU_TEXTSTACK_SIZE = 1024;
 
 enum MU_COMMANDLIST_SIZE = (256 * 1024);
 enum MU_ROOTLIST_SIZE = 32;
@@ -238,7 +238,8 @@ struct mu_TextCommand
     mu_Font font;
     mu_Vec2 pos;
     mu_Color color;
-    char[MU_TEXT_BUFFER] str; // char str[1];
+    //TODO: Consider adding size_t length
+    char *str;
 }
 
 ///
@@ -320,7 +321,6 @@ struct mu_Context
     // core state
     //
     
-    deprecated mu_Style _style;
     mu_Style* style;
     mu_Id hover;
     mu_Id focus;
@@ -345,6 +345,7 @@ struct mu_Context
     mu_Stack!(mu_Rect,       MU_CLIPSTACK_SIZE)      clip_stack;
     mu_Stack!(mu_Id,         MU_IDSTACK_SIZE)        id_stack;
     mu_Stack!(mu_Layout,     MU_LAYOUTSTACK_SIZE)    layout_stack;
+    mu_Stack!(char,          MU_TEXTSTACK_SIZE)      text_stack;
     
     //
     // retained state pools
@@ -533,6 +534,7 @@ void mu_begin(mu_Context* ctx)
     assert(ctx.text_width && ctx.text_height, "ctx.text_width && ctx.text_height");
     ctx.command_list.idx = 0;
     ctx.root_list.idx = 0;
+    ctx.text_stack.idx = 0;
     ctx.scroll_target = null;
     ctx.hover_root = ctx.next_hover_root;
     ctx.next_hover_root = null;
@@ -541,7 +543,7 @@ void mu_begin(mu_Context* ctx)
     ctx.frame++;
 }
 
-int compare_zindex(const void* a, const void* b)
+int mu_compare_zindex(const void* a, const void* b)
 {
     mu_Container *A = cast(mu_Container*) a;
     mu_Container *B = cast(mu_Container*) b;
@@ -589,7 +591,7 @@ void mu_end(mu_Context* ctx)
     /* sort root containers by zindex */
     size_t n = ctx.root_list.idx;
     // NOTE: May cause crashes across different C runtimes (e.g., MSVC)
-    //qsort(ctx.root_list.items.ptr, n, (mu_Container*).sizeof, &compare_zindex);
+    //qsort(ctx.root_list.items.ptr, n, (mu_Container*).sizeof, &mu_compare_zindex);
     
     // Set root container jump commands
     // First container should have the first command jump to it
@@ -681,7 +683,7 @@ int mu_check_clip(mu_Context* ctx, mu_Rect r)
     return MU_CLIP_PART;
 }
 
-void push_layout(mu_Context* ctx, mu_Rect body_, mu_Vec2 scroll)
+void mu_push_layout(mu_Context* ctx, mu_Rect body_, mu_Vec2 scroll)
 {
     mu_Layout layout = void;
     int width = 0;
@@ -697,7 +699,7 @@ mu_Layout* mu_get_layout(mu_Context* ctx)
     return &ctx.layout_stack.items[ctx.layout_stack.idx - 1];
 }
 
-void pop_container(mu_Context* ctx)
+void mu_pop_container(mu_Context* ctx)
 {
     mu_Container* cnt = mu_get_current_container(ctx);
     mu_Layout* layout = mu_get_layout(ctx);
@@ -715,7 +717,7 @@ mu_Container* mu_get_current_container(mu_Context* ctx)
     return ctx.container_stack.items[ctx.container_stack.idx - 1];
 }
 
-mu_Container* get_container(mu_Context* ctx, mu_Id id, int opt)
+mu_Container* mu_get_container(mu_Context* ctx, mu_Id id, int opt)
 {
     // try to get existing container from pool
     int idx = mu_pool_get(ctx, ctx.container_pool.ptr, MU_CONTAINERPOOL_SIZE, id);
@@ -744,7 +746,7 @@ mu_Container* get_container(mu_Context* ctx, mu_Id id, int opt)
 mu_Container* mu_get_container(mu_Context* ctx, const(char)* name)
 {
     mu_Id id = mu_get_id(ctx, name, cast(int) strlen(name));
-    return get_container(ctx, id, 0);
+    return mu_get_container(ctx, id, 0);
 }
 
 void mu_bring_to_front(mu_Context* ctx, mu_Container* cnt)
@@ -875,7 +877,7 @@ int mu_next_command(mu_Context* ctx, mu_Command** cmd)
     return 0;
 }
 
-mu_Command* push_jump(mu_Context* ctx, mu_Command* dst)
+mu_Command* mu_push_jump(mu_Context* ctx, mu_Command* dst)
 {
     mu_Command* cmd = mu_push_command(ctx, MU_COMMAND_JUMP, mu_JumpCommand.sizeof);
     cmd.jump.dst = dst;
@@ -886,6 +888,16 @@ void mu_set_clip(mu_Context* ctx, mu_Rect rect)
 {
     mu_Command* cmd = mu_push_command(ctx, MU_COMMAND_CLIP, mu_ClipCommand.sizeof);
     cmd.clip.rect = rect;
+}
+
+char* mu_push_text(mu_Context* ctx, const(char)* str, size_t len) {
+    char* str_start = &ctx.text_stack.items[ctx.text_stack.idx];
+    assert(ctx.text_stack.idx + len + 1 < MU_TEXTSTACK_SIZE);
+
+    memcpy(str_start, str, len);
+    str_start[len] = '\0';
+    ctx.text_stack.idx += len + 1;
+    return str_start;
 }
 
 void mu_draw_rect(mu_Context* ctx, mu_Rect rect, mu_Color color)
@@ -927,9 +939,11 @@ void mu_draw_text(mu_Context* ctx, mu_Font font, const(char)* str, int len,
         len = cast(int)strlen(str);
     }
     
+    //mu_Command* cmd = mu_push_command(ctx, MU_COMMAND_TEXT, cast(int)(mu_TextCommand.sizeof + len));
+    //memcpy(cmd.text.str.ptr, str, len);
+    //cmd.text.str[len] = '\0';
     mu_Command* cmd = mu_push_command(ctx, MU_COMMAND_TEXT, cast(int)(mu_TextCommand.sizeof + len));
-    memcpy(cmd.text.str.ptr, str, len);
-    cmd.text.str[len] = '\0';
+    cmd.text.str = mu_push_text(ctx, str, len);
     cmd.text.pos = pos;
     cmd.text.color = color;
     cmd.text.font = font;
@@ -977,7 +991,7 @@ enum
 
 void mu_layout_begin_column(mu_Context* ctx)
 {
-    push_layout(ctx, mu_layout_next(ctx), mu_Vec2(0, 0));
+    mu_push_layout(ctx, mu_layout_next(ctx), mu_Vec2(0, 0));
 }
 
 void mu_layout_end_column(mu_Context* ctx)
@@ -1094,7 +1108,7 @@ mu_Rect mu_layout_next(mu_Context* ctx)
 ** controls
 **============================================================================*/
 
-int in_hover_root(mu_Context* ctx)
+int mu_in_hover_root(mu_Context* ctx)
 {
     size_t i = ctx.container_stack.idx;
     while (i--)
@@ -1154,7 +1168,7 @@ int mu_mouse_over(mu_Context* ctx, mu_Rect rect)
 {
     return rect_overlaps_vec2(rect, ctx.mouse_pos) &&
         rect_overlaps_vec2(mu_get_clip_rect(ctx), ctx.mouse_pos) &&
-        in_hover_root(ctx);
+        mu_in_hover_root(ctx);
 }
 
 void mu_update_control(mu_Context* ctx, mu_Id id, mu_Rect rect, int opt)
@@ -1630,22 +1644,22 @@ void mu_scrollbars(mu_Context* ctx, mu_Container* cnt, mu_Rect* body_)
     mu_pop_clip_rect(ctx);
 }
 
-void push_container_body(mu_Context* ctx, mu_Container* cnt, mu_Rect body_, int opt)
+void mu_push_container_body(mu_Context* ctx, mu_Container* cnt, mu_Rect body_, int opt)
 {
     if (~opt & MU_OPT_NOSCROLL)
     {
         mu_scrollbars(ctx, cnt, &body_);
     }
-    push_layout(ctx, mu_expand_rect(body_, -ctx.style.padding), cnt.scroll);
+    mu_push_layout(ctx, mu_expand_rect(body_, -ctx.style.padding), cnt.scroll);
     cnt.body_ = body_;
 }
 
-void begin_root_container(mu_Context* ctx, mu_Container* cnt)
+void mu_begin_root_container(mu_Context* ctx, mu_Container* cnt)
 {
     ctx.container_stack.push(cnt);
     // push container to roots list and push head command
     ctx.root_list.push(cnt);
-    cnt.head = push_jump(ctx, null);
+    cnt.head = mu_push_jump(ctx, null);
     // set as hover root if the mouse is overlapping this container and it has a
     // higher zindex than the current hover root
     if (rect_overlaps_vec2(cnt.rect, ctx.mouse_pos) &&
@@ -1659,23 +1673,23 @@ void begin_root_container(mu_Context* ctx, mu_Container* cnt)
     ctx.clip_stack.push(unclipped_rect);
 }
 
-void end_root_container(mu_Context* ctx)
+void mu_end_root_container(mu_Context* ctx)
 {
     // push tail 'goto' jump command and set head 'skip' command. the final steps
     // on initing these are done in mu_end()
     mu_Container* cnt = mu_get_current_container(ctx);
-    cnt.tail = push_jump(ctx, null);
+    cnt.tail = mu_push_jump(ctx, null);
     cnt.head.jump.dst = ctx.command_list.items.ptr + ctx.command_list.idx;
     // pop base clip rect and container
     mu_pop_clip_rect(ctx);
-    pop_container(ctx);
+    mu_pop_container(ctx);
 }
 
 int mu_begin_window_ex(mu_Context* ctx, const(char)* title, mu_Rect rect, int opt)
 {
     mu_Rect body_;
     mu_Id id = mu_get_id(ctx, title, cast(int)strlen(title));
-    mu_Container* cnt = get_container(ctx, id, opt);
+    mu_Container* cnt = mu_get_container(ctx, id, opt);
     if (!cnt || !cnt.open)
     {
         return 0;
@@ -1686,7 +1700,7 @@ int mu_begin_window_ex(mu_Context* ctx, const(char)* title, mu_Rect rect, int op
     {
         cnt.rect = rect;
     }
-    begin_root_container(ctx, cnt);
+    mu_begin_root_container(ctx, cnt);
     rect = body_ = cnt.rect;
 
     // draw frame
@@ -1732,7 +1746,7 @@ int mu_begin_window_ex(mu_Context* ctx, const(char)* title, mu_Rect rect, int op
         }
     }
 
-    push_container_body(ctx, cnt, body_, opt);
+    mu_push_container_body(ctx, cnt, body_, opt);
 
     // do `resize` handle
     if (~opt & MU_OPT_NORESIZE)
@@ -1769,7 +1783,7 @@ int mu_begin_window_ex(mu_Context* ctx, const(char)* title, mu_Rect rect, int op
 void mu_end_window(mu_Context* ctx)
 {
     mu_pop_clip_rect(ctx);
-    end_root_container(ctx);
+    mu_end_root_container(ctx);
 }
 
 void mu_open_popup(mu_Context* ctx, const(char)* name)
@@ -1799,14 +1813,14 @@ mu_Container* mu_begin_panel_ex(mu_Context* ctx, const(char)* name, int opt)
 {
     mu_Container* cnt;
     mu_push_id(ctx, name, cast(int)strlen(name));
-    cnt = get_container(ctx, ctx.last_id, opt);
+    cnt = mu_get_container(ctx, ctx.last_id, opt);
     cnt.rect = mu_layout_next(ctx);
     if (~opt & MU_OPT_NOFRAME)
     {
         ctx.mu_draw_frame(ctx, cnt.rect, MU_COLOR_PANELBG);
     }
     ctx.container_stack.push(cnt);
-    push_container_body(ctx, cnt, cnt.rect, opt);
+    mu_push_container_body(ctx, cnt, cnt.rect, opt);
     mu_push_clip_rect(ctx, cnt.body_);
     return cnt;
 }
@@ -1814,5 +1828,5 @@ mu_Container* mu_begin_panel_ex(mu_Context* ctx, const(char)* name, int opt)
 void mu_end_panel(mu_Context* ctx)
 {
     mu_pop_clip_rect(ctx);
-    pop_container(ctx);
+    mu_pop_container(ctx);
 }
