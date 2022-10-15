@@ -28,7 +28,6 @@ to be implemented in your application in order to work.
 - Textbox input navigation.
 - Triangle corner hint and/or cursor change for resizable windows.
 - Command stack should work with an index.
-- Fix host window resizing for current example.
 - Fix window dragging when on-top of each other for current example.
 - Fix z-index global state (window management).
 - Demo: Support OpenGL 3.3 and/or ES 2.0.

@@ -33,11 +33,18 @@ import core.stdc.string;
 
 extern (C):
 
+//TODO: Consider ballooning command stack
+//      e.g., if initial size isn't enough, allocate more (forever)
+//      might not be viable since dynamic allocation is performed
+
 enum MU_VERSION = "0.0.1";
 
+/// Buffer size for text command.
+/// This affects all labels and text inputs.
 enum MU_TEXTSTACK_SIZE = 1024;
-
-enum MU_COMMANDLIST_SIZE = 4096; //(256 * 1024);
+/// Maximum number of commands that the UI can generate.
+/// Demo uses around 497 commands.
+enum MU_COMMANDLIST_SIZE = 4096;
 enum MU_ROOTLIST_SIZE = 32;
 enum MU_CONTAINERSTACK_SIZE = 32;
 enum MU_CLIPSTACK_SIZE = 32;
@@ -47,7 +54,6 @@ enum MU_CONTAINERPOOL_SIZE = 48;
 enum MU_TREENODEPOOL_SIZE = 48;
 enum MU_MAX_WIDTHS = 16;
 enum MU_MAX_FMT = 64;
-alias MU_REAL = float;
 enum const(char)* MU_REAL_FMT = "%.3g";
 enum const(char)* MU_SLIDER_FMT = "%.2f";
 
@@ -74,6 +80,7 @@ struct mu_Stack(T, size_t n)
         --idx;
     }
 }
+
 /// Returns minimum item.
 auto mu_min(A, B)(A a, B b)
 {
@@ -89,6 +96,10 @@ auto mu_clamp(X, A, B)(X x, A a, B b)
 {
     return mu_min(b, mu_max(a, x));
 }
+
+alias mu_Id = uint;
+alias mu_Real = float;
+alias mu_Font = void*;
 
 enum
 {
@@ -173,10 +184,6 @@ enum
     MU_KEY_BACKSPACE = (1 << 3),
     MU_KEY_RETURN = (1 << 4)
 }
-
-alias mu_Id = uint;
-alias mu_Real = MU_REAL;
-alias mu_Font = void*;
 
 /// 2D vector point
 struct mu_Vec2
@@ -283,7 +290,6 @@ struct mu_Layout
 ///
 struct mu_Container
 {
-    //mu_Command* head, tail;
     int head_idx, tail_idx;
     mu_Rect rect;
     mu_Rect body_;
@@ -842,9 +848,9 @@ void mu_input_text(mu_Context* ctx, const(char)* text)
 ** commandlist
 **============================================================================*/
 
-mu_Command* mu_push_command(mu_Context* ctx, int type/*, int size*/)
+mu_Command* mu_push_command(mu_Context* ctx, int type)
 {
-    mu_Command* cmd = cast(mu_Command*)(ctx.command_list.items.ptr + ctx.command_list.idx);
+    mu_Command* cmd = &ctx.command_list.items[ctx.command_list.idx];
     cmd.base.type = type;
     ++ctx.command_list.idx;
     return cmd;

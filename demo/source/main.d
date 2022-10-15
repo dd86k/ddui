@@ -33,6 +33,12 @@ void main(int argc, const(char) **args)
             cli_debug = true;
     }
     
+    if (cli_debug)
+    {
+        printf("* mu_Context.sizeof: %zu\n", mu_Context.sizeof);
+        printf("* mu_Command.sizeof: %zu\n", mu_Command.sizeof);
+    }
+    
     import std.compiler : version_major, version_minor;
     printf("* COMPILER    : "~__VENDOR__~" v%u.%03u\n", version_major, version_minor);
     
@@ -46,8 +52,8 @@ void main(int argc, const(char) **args)
     {
         SDLSupport sdlstatus = loadSDL();
         switch (sdlstatus) with (SDLSupport) {
-        case noLibrary:  assert(0, "No SDL libraries on system.");
-        case badLibrary: assert(0, "Found SDL library older than one configured with.");
+        case noLibrary:  assert(0, "No SDL libraries found on system, aborting.");
+        case badLibrary: assert(0, "SDL library older than configuration, aborting.");
         default:
         }
     }
@@ -88,9 +94,9 @@ void main(int argc, const(char) **args)
     // Init UI
     mu_Context uictx = void;
     mu_init(&uictx);
+    uictx.text_width  = &text_width;
+    uictx.text_height = &text_height;
     mu_Context *ui = &uictx;
-    ui.text_width  = &text_width;
-    ui.text_height = &text_height;
     
     stopwatch_t.setup();
     
