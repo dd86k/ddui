@@ -106,7 +106,7 @@ struct stopwatch_t
     {
         version (Windows)
         {
-            return (time1 - time0) / s.freq;
+            return (time1 - time0) / __freq;
         }
         else version (Posix)
         {
