@@ -20,6 +20,7 @@ __gshared int window_width  = 700;
 __gshared int window_height = 550;
 __gshared SDL_Window *window;
 __gshared SDL_GLContext glctx;
+__gshared mu_Context uictx;
 
 void main(int argc, const(char) **args)
 {
@@ -92,11 +93,10 @@ void main(int argc, const(char) **args)
     printf("* GL_VERSION  : %s\n", glGetString(GL_VERSION));
     
     // Init UI
-    mu_Context uictx = void;
-    mu_init(&uictx);
-    uictx.text_width  = &text_width;
-    uictx.text_height = &text_height;
     mu_Context *ui = &uictx;
+    mu_init(ui);
+    ui.text_width  = &text_width;
+    ui.text_height = &text_height;
     
     stopwatch_t.setup();
     
