@@ -47,16 +47,17 @@ void main(int argc, const(char) **args)
     // the bindbc-sdl:staticBC configuration.
     version (Windows)
     {
-        loadSDL("sdl2.dll");
+        SDLSupport sdlstatus = loadSDL("sdl2.dll");
     }
     else
     {
         SDLSupport sdlstatus = loadSDL();
-        switch (sdlstatus) with (SDLSupport) {
-        case noLibrary:  assert(0, "No SDL libraries found on system, aborting.");
-        case badLibrary: assert(0, "SDL library older than configuration, aborting.");
-        default:
-        }
+    }
+    
+    switch (sdlstatus) with (SDLSupport) {
+    case noLibrary:  assert(0, "No SDL libraries found on system, aborting.");
+    case badLibrary: assert(0, "SDL library older than configuration, aborting.");
+    default:
     }
     
     // Setup SDL
@@ -93,10 +94,9 @@ void main(int argc, const(char) **args)
     printf("* GL_VERSION  : %s\n", glGetString(GL_VERSION));
     
     // Init UI
-    mu_Context *ui = &uictx;
-    mu_init(ui);
-    ui.text_width  = &text_width;
-    ui.text_height = &text_height;
+    mu_init(&uictx);
+    uictx.text_width  = &text_width;
+    uictx.text_height = &text_height;
     
     stopwatch_t.setup();
     
@@ -111,13 +111,13 @@ void main(int argc, const(char) **args)
             {
                 case SDL_QUIT: break GAME;
                 case SDL_MOUSEMOTION:
-                    mu_input_mousemove(ui, e.motion.x, e.motion.y);
+                    mu_input_mousemove(&uictx, e.motion.x, e.motion.y);
                     continue;
                 case SDL_MOUSEWHEEL:
-                    mu_input_scroll(ui, 0, e.wheel.y * -30);
+                    mu_input_scroll(&uictx, 0, e.wheel.y * -30);
                     continue;
                 case SDL_TEXTINPUT:
-                    mu_input_text(ui, e.text.text.ptr);
+                    mu_input_text(&uictx, e.text.text.ptr);
                     continue;
 
                 case SDL_MOUSEBUTTONDOWN, SDL_MOUSEBUTTONUP:
@@ -125,10 +125,10 @@ void main(int argc, const(char) **args)
                     if (!b) continue;
                     switch (e.type) {
                     case SDL_MOUSEBUTTONDOWN:
-                        mu_input_mousedown(ui, e.button.x, e.button.y, b);
+                        mu_input_mousedown(&uictx, e.button.x, e.button.y, b);
                         continue;
                     case SDL_MOUSEBUTTONUP:
-                        mu_input_mouseup(ui, e.button.x, e.button.y, b);
+                        mu_input_mouseup(&uictx, e.button.x, e.button.y, b);
                         continue;
                     default: continue;
                     }
@@ -137,8 +137,8 @@ void main(int argc, const(char) **args)
                     int k = key_map[e.key.keysym.sym & 0xff];
                     if (!k) continue;
                     switch (e.type) {
-                    case SDL_KEYDOWN: mu_input_keydown(ui, k); continue;
-                    case SDL_KEYUP:   mu_input_keyup(ui, k);   continue;
+                    case SDL_KEYDOWN: mu_input_keydown(&uictx, k); continue;
+                    case SDL_KEYUP:   mu_input_keyup(&uictx, k);   continue;
                     default:
                     }
                     continue;
@@ -150,20 +150,20 @@ void main(int argc, const(char) **args)
         
         // Process UI
         sw_ui.stop;
-        mu_begin(ui);
+        mu_begin(&uictx);
         if (cli_debug)
         {
-            debug_window(ui);
-            log_window(ui);
-            style_window(ui);
+            debug_window(&uictx);
+            log_window(&uictx);
+            style_window(&uictx);
         }
         else
         {
-            log_window(ui);
-            test_window(ui);
-            style_window(ui);
+            log_window(&uictx);
+            test_window(&uictx);
+            style_window(&uictx);
         }
-        mu_end(ui);
+        mu_end(&uictx);
         sw_ui.start;
         
         // Clear screen and process rendering commands from UI
@@ -171,7 +171,7 @@ void main(int argc, const(char) **args)
         stat_id       = uictx.id_stack.idx;
         sw_commands.start;
         r_clear(mu_Color(cast(ubyte)bg[0], cast(ubyte)bg[1], cast(ubyte)bg[2], 255));
-        foreach (ref mu_Command cmd ; mu_command_range(ui))
+        foreach (ref mu_Command cmd ; mu_command_range(&uictx))
         {
             switch (cmd.type)
             {
@@ -413,7 +413,8 @@ void style_window(mu_Context *ctx)
         int sw = cast(int)(mu_get_current_container(ctx).body_.w * 0.14f); // ~1/5
         int[6] r = [ 80, sw, sw, sw, sw, -1 ];
         mu_layout_row(ctx, 6, r.ptr, 0);
-        for (size_t i; colors[i].label; ++i) {
+        for (size_t i; colors[i].label; ++i)
+        {
             mu_label(ctx, colors[i].label);
             uint8_slider(ctx, &ctx.style.colors[i].r, 0, 255);
             uint8_slider(ctx, &ctx.style.colors[i].g, 0, 255);

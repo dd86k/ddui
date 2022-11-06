@@ -428,7 +428,7 @@ immutable mu_Rect unclipped_rect = { 0, 0, 0x1000000, 0x1000000 };
 
 /// Default style.
 pragma(mangle, "mu_default_style")
-immutable mu_Style default_style = {
+__gshared mu_Style default_style = {
     // Font
     null,
     // Size in pixels
