@@ -12,26 +12,29 @@ Like the original, the library does not do any rendering of its own, but contain
 commands to draw text, shapes, and icons originating from the library that needs
 to be implemented in your application in order to work.
 
+**NOTE**: A few things broke when converting the source to D, and I'm still new to OpenGL!
+
 # Features
 
 - BetterC compatibility.
+- Index-based command stack buffer.
 - Demo: Fixed host window resizing (clipping).
+  - But broke control clipping...
 
 # Roadmap
 
 - Simplify codebase.
-- Rename all prefixes.
+- Rename mu_ prefixes.
 - Embedded documentation.
-- Improve string handling (maybe string_t, at least reduce dependency on strlen).
+- Improve string handling.
+  - Maybe introduce string_t, at least reduce dependency on strlen.
 - Replace FNV-1a hash by Murmurhash3-32.
 - Improve ID system.
 - Textbox input navigation.
 - Triangle corner hint and/or cursor change for resizable windows.
-- Command stack should work with an index.
 - Fix window dragging when on-top of each other for current example.
 - Fix z-index global state (window management).
 - Demo: Support OpenGL 3.3 and/or ES 2.0.
-- (Research needed) Use bsearch for searching hashes.
 - (Considering) Dedicated helper functions to aid SDL2/Allegro/GLFW integration.
 
 # Example
