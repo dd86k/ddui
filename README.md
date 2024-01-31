@@ -1,5 +1,7 @@
 # ddui, Immediate Mode UI
 
+**No longer maintained.**
+
 ![demo](images/demo.png)
 
 ddui is a BetterC compatible Immediate Mode User Interface.

@@ -42,6 +42,7 @@ void main(int argc, const(char) **args)
     
     import std.compiler : version_major, version_minor;
     printf("* COMPILER    : "~__VENDOR__~" v%u.%03u\n", version_major, version_minor);
+    printf("* CONFIG      : "~CONFIGURATION~"\n");
     
     // Comment this section if you plan to use
     // the bindbc-sdl:staticBC configuration.
@@ -80,18 +81,19 @@ void main(int argc, const(char) **args)
     glctx  = SDL_GL_CreateContext(window);
     
     // Print SDL version
-    SDL_version  sdlverconf = void, sdlverrt = void;
-    SDL_VERSION(&sdlverconf);
-    SDL_GetVersion(&sdlverrt);
+    SDL_version verconf = void, verdyn = void;
+    SDL_VERSION(&verconf);
+    SDL_GetVersion(&verdyn);
     printf("* SDL_VERSION : %u.%u.%u configured, %u.%u.%u running\n",
-        sdlverconf.major, sdlverconf.minor, sdlverconf.patch,
-        sdlverrt.major, sdlverrt.minor, sdlverrt.patch);
+        verconf.major, verconf.minor, verconf.patch,
+        verdyn.major, verdyn.minor, verdyn.patch);
     
     // OpenGL setup
-    printf("* CONFIG      : "~CONFIGURATION~"\n");
     initiate_renderer();
-    printf("* GL_RENDERER : %s\n", glGetString(GL_RENDERER));
-    printf("* GL_VERSION  : %s\n", glGetString(GL_VERSION));
+    printf("* GL_RENDERER   : %s\n", glGetString(GL_RENDERER));
+    printf("* GL_VERSION    : %s\n", glGetString(GL_VERSION));
+    if (cli_debug)
+        printf("* GL_EXTENSIONS : %s\n", glGetString(GL_EXTENSIONS));
     
     // Init UI
     mu_init(&uictx);
