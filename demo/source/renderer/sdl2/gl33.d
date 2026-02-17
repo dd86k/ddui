@@ -15,7 +15,7 @@ enum CONFIGURATION = "GL33";
 version (OSX)
     enum SHADER_VERSION = "#version 150\n";
 else
-    enum SHADER_VERSION = "#version 300 es\n";
+    enum SHADER_VERSION = "#version 330\n";
 
 immutable const(GLchar)* vertex_source =
     SHADER_VERSION~
@@ -38,7 +38,8 @@ immutable const(GLchar)* fragment_source =
     "in vec4 Frag_Color;\n"~
     "out vec4 Out_Color;\n"~
     "void main() {\n"~
-    "   Out_Color = Frag_Color * texture(Texture, Frag_UV.st);\n"~
+    "   float a = texture(Texture, Frag_UV.st).r;\n"~
+    "   Out_Color = Frag_Color * vec4(1.0, 1.0, 1.0, a);\n"~
     "}\n";
 
 struct platform_vertex
@@ -64,13 +65,26 @@ __gshared GLuint vbo;
 __gshared GLuint ebo;
 __gshared GLuint vao;
 
+enum BUFFER_SIZE = 16384;
+
+__gshared platform_vertex[BUFFER_SIZE * 4] vert_buf;
+__gshared GLuint[BUFFER_SIZE * 6] index_buf;
+__gshared int buf_idx;
+
 void initiate_renderer()
 {
     GLSupport glstatus = loadOpenGL;
     assert(glstatus >= GLSupport.gl33, "Failed to load OpenGL 3.3");
     assert(glGenVertexArrays, "glGenVertexArrays is null, is ARB loaded?");
-    
-    // OpenGL setup
+
+    // GL state
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_SCISSOR_TEST);
+
+    // Shader setup
     glprogram = glCreateProgram();
     vertex_shader = glCreateShader(GL_VERTEX_SHADER);
     fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -78,59 +92,63 @@ void initiate_renderer()
     glShaderSource(fragment_shader, 1, &fragment_source, null);
     glCompileShader(vertex_shader);
     glCompileShader(fragment_shader);
-    
+
     GLint status = void;
     glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &status);
     assert(status, "Compiling vertex shader failed");
     glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &status);
     assert(status, "Compiling fragment shader failed");
-    
+
     glAttachShader(glprogram, vertex_shader);
     glAttachShader(glprogram, fragment_shader);
     glLinkProgram(glprogram);
-    
+
     glGetProgramiv(glprogram, GL_LINK_STATUS, &status);
     assert(status, "Linking GL program failed");
-    
+
     uniform_texture    = glGetUniformLocation(glprogram, "Texture");
     uniform_projmatrix = glGetUniformLocation(glprogram, "ProjMtx");
     attrib_position    = glGetAttribLocation(glprogram,  "Position");
     attrib_texcoord    = glGetAttribLocation(glprogram,  "TexCoord");
     attrib_color       = glGetAttribLocation(glprogram,  "Color");
-    
+
     // Buffer setup
     {
         glGenBuffers(1, &vbo);
         glGenBuffers(1, &ebo);
         glGenVertexArrays(1, &vao);
-        
+
         glBindVertexArray(vao);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-        
-        glEnableVertexAttribArray(attrib_position);
-        glEnableVertexAttribArray(attrib_texcoord);
-        glEnableVertexAttribArray(attrib_color);
-        
+
+        glEnableVertexAttribArray(cast(GLuint)attrib_position);
+        glEnableVertexAttribArray(cast(GLuint)attrib_texcoord);
+        glEnableVertexAttribArray(cast(GLuint)attrib_color);
+
         GLsizei vs = platform_vertex.sizeof;
         size_t  vp = platform_vertex.position.offsetof;
         size_t  vt = platform_vertex.tex.offsetof;
         size_t  vc = platform_vertex.color.offsetof;
-        
+
         glVertexAttribPointer(cast(GLuint)attrib_position, 2, GL_FLOAT,         GL_FALSE, vs, cast(void*)vp);
         glVertexAttribPointer(cast(GLuint)attrib_texcoord, 2, GL_FLOAT,         GL_FALSE, vs, cast(void*)vt);
         glVertexAttribPointer(cast(GLuint)attrib_color,    4, GL_UNSIGNED_BYTE, GL_TRUE,  vs, cast(void*)vc);
     }
-    
+
     glBindTexture(GL_TEXTURE_2D, 0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
-}
 
-void upload_atlas()
-{
-    
+    // Upload atlas texture
+    glGenTextures(1, &font_texture);
+    glBindTexture(GL_TEXTURE_2D, font_texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, ATLAS_WIDTH, ATLAS_HEIGHT, 0,
+        GL_RED, GL_UNSIGNED_BYTE, atlas_texture.ptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    assert(glGetError() == 0);
 }
 
 void destroy_renderer()
@@ -140,86 +158,85 @@ void destroy_renderer()
     glDeleteShader(vertex_shader);
     glDeleteShader(fragment_shader);
     glDeleteProgram(glprogram);
-    //glDeleteTextures(1, &font_texture);
+    glDeleteTextures(1, &font_texture);
+    glDeleteVertexArrays(1, &vao);
     glDeleteBuffers(1, &vbo);
     glDeleteBuffers(1, &ebo);
 }
 
 void flush()
 {
-    /*if (buf_idx == 0) return;
-    
+    if (buf_idx == 0) return;
+
     SDL_GetWindowSize(window, &window_width, &window_height);
-    
+
+    // Orthographic projection matrix
+    float L = 0;
+    float R = window_width;
+    float T = 0;
+    float B = window_height;
+    GLfloat[4][4] ortho = [
+        [ 2.0f/(R-L),   0.0f,         0.0f, 0.0f ],
+        [ 0.0f,         2.0f/(T-B),   0.0f, 0.0f ],
+        [ 0.0f,         0.0f,        -1.0f, 0.0f ],
+        [ (R+L)/(L-R),  (T+B)/(B-T),  0.0f, 1.0f ],
+    ];
+
     glViewport(0, 0, window_width, window_height);
-    glMatrixMode(GL_PROJECTION);
-    glPushMatrix();
-    glLoadIdentity();
-    glOrtho(0.0f, window_width, window_height, 0.0f, -1.0f, +1.0f);
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glLoadIdentity();
-    
-    glTexCoordPointer(2, GL_FLOAT, 0, tex_buf.ptr);
-    glVertexPointer(2, GL_FLOAT, 0, vert_buf.ptr);
-    glColorPointer(4, GL_UNSIGNED_BYTE, 0, color_buf.ptr);
-    glDrawElements(GL_TRIANGLES, buf_idx * 6, GL_UNSIGNED_INT, index_buf.ptr);
-    
-    glMatrixMode(GL_MODELVIEW);
-    glPopMatrix();
-    glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
-    
-    buf_idx = 0;*/
+    glUseProgram(glprogram);
+    glUniform1i(uniform_texture, 0);
+    glUniformMatrix4fv(uniform_projmatrix, 1, GL_FALSE, &ortho[0][0]);
+
+    glBindTexture(GL_TEXTURE_2D, font_texture);
+    glBindVertexArray(vao);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, buf_idx * 4 * cast(int)platform_vertex.sizeof, vert_buf.ptr, GL_STREAM_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, buf_idx * 6 * cast(int)GLuint.sizeof, index_buf.ptr, GL_STREAM_DRAW);
+
+    glDrawElements(GL_TRIANGLES, buf_idx * 6, GL_UNSIGNED_INT, null);
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+
+    buf_idx = 0;
 }
 
 void push_quad(mu_Rect dst, mu_Rect src, mu_Color color)
 {
-    /*if (buf_idx == BUFFER_SIZE) { flush(); }
+    if (buf_idx == BUFFER_SIZE) { flush(); }
 
-    int texvert_idx = buf_idx *  8; // Texture vertex index
-    int   color_idx = buf_idx * 16; // Color index
-    int element_idx = buf_idx *  4; // Element index
-    int   index_idx = buf_idx *  6; // Index
+    int vi = buf_idx * 4; // vertex index
+    int ii = buf_idx * 6; // index index
     ++buf_idx;
 
-    // Update texture buffer
-    float x = src.x / cast(float) ATLAS_WIDTH;
-    float y = src.y / cast(float) ATLAS_HEIGHT;
-    float w = src.w / cast(float) ATLAS_WIDTH;
-    float h = src.h / cast(float) ATLAS_HEIGHT;
-    tex_buf[texvert_idx + 0] = x;
-    tex_buf[texvert_idx + 1] = y;
-    tex_buf[texvert_idx + 2] = x + w;
-    tex_buf[texvert_idx + 3] = y;
-    tex_buf[texvert_idx + 4] = x;
-    tex_buf[texvert_idx + 5] = y + h;
-    tex_buf[texvert_idx + 6] = x + w;
-    tex_buf[texvert_idx + 7] = y + h;
+    // Texture coordinates
+    float u0 = src.x / cast(float) ATLAS_WIDTH;
+    float v0 = src.y / cast(float) ATLAS_HEIGHT;
+    float u1 = (src.x + src.w) / cast(float) ATLAS_WIDTH;
+    float v1 = (src.y + src.h) / cast(float) ATLAS_HEIGHT;
 
-    // Update vertex buffer
-    vert_buf[texvert_idx + 0] = dst.x;
-    vert_buf[texvert_idx + 1] = dst.y;
-    vert_buf[texvert_idx + 2] = dst.x + dst.w;
-    vert_buf[texvert_idx + 3] = dst.y;
-    vert_buf[texvert_idx + 4] = dst.x;
-    vert_buf[texvert_idx + 5] = dst.y + dst.h;
-    vert_buf[texvert_idx + 6] = dst.x + dst.w;
-    vert_buf[texvert_idx + 7] = dst.y + dst.h;
+    // Position
+    float x0 = dst.x;
+    float y0 = dst.y;
+    float x1 = dst.x + dst.w;
+    float y1 = dst.y + dst.h;
 
-    // Update color buffer
-    memcpy(color_buf.ptr + color_idx +  0, &color, 4);
-    memcpy(color_buf.ptr + color_idx +  4, &color, 4);
-    memcpy(color_buf.ptr + color_idx +  8, &color, 4);
-    memcpy(color_buf.ptr + color_idx + 12, &color, 4);
+    ubyte[4] c = [color.r, color.g, color.b, color.a];
 
-    // Update index buffer
-    index_buf[index_idx + 0] = element_idx + 0;
-    index_buf[index_idx + 1] = element_idx + 1;
-    index_buf[index_idx + 2] = element_idx + 2;
-    index_buf[index_idx + 3] = element_idx + 2;
-    index_buf[index_idx + 4] = element_idx + 3;
-    index_buf[index_idx + 5] = element_idx + 1;*/
+    vert_buf[vi + 0] = platform_vertex([x0, y0], [u0, v0], c);
+    vert_buf[vi + 1] = platform_vertex([x1, y0], [u1, v0], c);
+    vert_buf[vi + 2] = platform_vertex([x0, y1], [u0, v1], c);
+    vert_buf[vi + 3] = platform_vertex([x1, y1], [u1, v1], c);
+
+    index_buf[ii + 0] = vi + 0;
+    index_buf[ii + 1] = vi + 1;
+    index_buf[ii + 2] = vi + 2;
+    index_buf[ii + 3] = vi + 2;
+    index_buf[ii + 4] = vi + 3;
+    index_buf[ii + 5] = vi + 1;
 }
 
 void r_draw_rect(mu_Rect rect, mu_Color color)
