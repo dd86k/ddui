@@ -4,3 +4,5 @@ description "BetterC Immediate-mode UI library"
 authors "dd86k <dd@dax.moe>"
 copyright "Copyright © 2022, dd86k <dd@dax.moe>"
 license "BSD-3-Clause"
+
+subPackage "demo"

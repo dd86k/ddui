@@ -8,9 +8,9 @@ license "BSD-3-Clause"
 versions "SDL" "SDL_2010"
 versions "GL"
 
-dependency "bindbc-opengl" version="~>1.0.2"
-dependency "bindbc-loader" version="~>1.0.1"
-dependency "bindbc-sdl" version="~>1.2.1"
+dependency "bindbc-opengl" version="~>1.1.1"
+dependency "bindbc-loader" version="~>1.1.5"
+dependency "bindbc-sdl" version="~>2.3.3"
 dependency "ddui" path="../"
 
 # NOTE: For bindbc-sdl, there's staticBC and dynamicBC.
