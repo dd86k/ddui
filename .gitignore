@@ -17,4 +17,7 @@ ddui-test-*
 *.dylib
 *.pdb
 dub.selections.json
-demo/demo
+demo/ddui_demo
+
+# Claude
+.claude/
