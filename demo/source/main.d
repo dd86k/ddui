@@ -25,13 +25,20 @@ __gshared mu_Context uictx;
 void main(int argc, const(char) **args)
 {
     bool cli_debug;
-    
+    int  cli_vsync = 1;
+
     for (int argi = 1; argi < argc; ++argi)
     {
         const(char) *arg = args[argi];
-        
+
         if (strcmp(arg, "--debug") == 0)
             cli_debug = true;
+        else if (strcmp(arg, "--vsync") == 0)
+            cli_vsync = 1;
+        else if (strcmp(arg, "--no-vsync") == 0)
+            cli_vsync = 0;
+        else if (strcmp(arg, "--adaptive-vsync") == 0)
+            cli_vsync = -1;
     }
     
     if (cli_debug)
@@ -79,7 +86,8 @@ void main(int argc, const(char) **args)
         window_width, window_height,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
     glctx  = SDL_GL_CreateContext(window);
-    
+    SDL_GL_SetSwapInterval(cli_vsync);
+
     // Print SDL version
     SDL_version verconf = void, verdyn = void;
     SDL_VERSION(&verconf);
