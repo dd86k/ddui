@@ -293,6 +293,9 @@ void r_set_clip_rect(mu_Rect rect)
 void r_clear(mu_Color clr)
 {
     flush();
+    SDL_GetWindowSize(window, &window_width, &window_height);
+    glViewport(0, 0, window_width, window_height);
+    glScissor(0, 0, window_width, window_height);
     glClearColor(clr.r / 255., clr.g / 255., clr.b / 255., clr.a / 255.);
     glClear(GL_COLOR_BUFFER_BIT);
 }
