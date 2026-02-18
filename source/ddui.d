@@ -142,6 +142,7 @@ enum
     MU_ICON_CHECK,
     MU_ICON_COLLAPSED,
     MU_ICON_EXPANDED,
+    MU_ICON_DROPDOWN,
     MU_ICON_MAX
 }
 
@@ -398,6 +399,12 @@ int mu_slider(mu_Context* ctx, mu_Real* value, mu_Real low, mu_Real high)
 int mu_number(mu_Context* ctx, mu_Real* value, mu_Real step)
 {
     return mu_number_ex(ctx, value, step, MU_SLIDER_FMT, MU_OPT_ALIGNCENTER);
+}
+
+/// Creates a dropdown.
+int mu_dropdown(mu_Context* ctx, int* selected, const(char*)* items, int item_count)
+{
+    return mu_dropdown_ex(ctx, selected, items, item_count, 0);
 }
 
 /// 
@@ -1516,6 +1523,62 @@ int mu_number_ex(mu_Context* ctx, mu_Real* value, mu_Real step,
     sprintf(buf.ptr, fmt, *value);
     mu_draw_control_text(ctx, buf.ptr, base, MU_COLOR_TEXT, opt);
 
+    return res;
+}
+
+int mu_dropdown_ex(mu_Context* ctx, int* selected, const(char*)* items,
+    int item_count, int opt)
+{
+    int res;
+    mu_Id id = mu_get_id(ctx, &selected, selected.sizeof);
+    mu_Rect r = mu_layout_next(ctx);
+    mu_update_control(ctx, id, r, 0);
+
+    // draw trigger
+    mu_draw_control_frame(ctx, id, r, MU_COLOR_BUTTON, opt);
+    if (*selected >= 0 && *selected < item_count)
+    {
+        mu_Rect textr = mu_Rect(r.x, r.y, r.w - r.h, r.h);
+        mu_draw_control_text(ctx, items[*selected], textr, MU_COLOR_TEXT, 0);
+    }
+    // dropdown arrow icon on right side
+    mu_draw_icon(ctx, MU_ICON_EXPANDED,
+        mu_Rect(r.x + r.w - r.h, r.y, r.h, r.h),
+        ctx.style.colors[MU_COLOR_TEXT]);
+
+    // scope the popup name to this widget
+    mu_push_id(ctx, &selected, selected.sizeof);
+
+    // handle click - open popup
+    if (ctx.mouse_pressed == MU_MOUSE_LEFT && ctx.focus == id)
+    {
+        mu_Container* cnt = mu_get_container(ctx, "!dropdown");
+        // position below the trigger
+        cnt.rect = mu_Rect(r.x, r.y + r.h, r.w, 1);
+        cnt.open = 1;
+        ctx.hover_root = ctx.next_hover_root = cnt;
+        mu_bring_to_front(ctx, cnt);
+    }
+
+    // popup content
+    if (mu_begin_popup(ctx, "!dropdown"))
+    {
+        int width = r.w - ctx.style.padding * 2;
+        mu_layout_row(ctx, 1, &width, 0);
+        for (int i; i < item_count; i++)
+        {
+            if (mu_button(ctx, items[i]))
+            {
+                *selected = i;
+                res |= MU_RES_CHANGE;
+                // close the popup
+                mu_get_current_container(ctx).open = 0;
+            }
+        }
+        mu_end_popup(ctx);
+    }
+
+    mu_pop_id(ctx);
     return res;
 }
 

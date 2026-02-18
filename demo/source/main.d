@@ -357,6 +357,22 @@ void test_window(mu_Context *ctx)
             mu_layout_end_column(ctx);
         }
         
+        // dropdown
+        if (mu_header_ex(ctx, "Dropdown", MU_OPT_EXPANDED))
+        {
+            static immutable const(char)*[4] dropdown_items = [
+                "Option 1", "Option 2", "Option 3", "Option 4"
+            ];
+            __gshared int dropdown_sel = 0;
+            static immutable int[2] dcols = [ 80, -1 ];
+            mu_layout_row(ctx, 2, dcols.ptr, 0);
+            mu_label(ctx, "Select:");
+            if (mu_dropdown(ctx, &dropdown_sel, dropdown_items.ptr, 4) & MU_RES_CHANGE)
+            {
+                write_log(dropdown_items[dropdown_sel]);
+            }
+        }
+
         /* background color sliders */
         if (mu_header_ex(ctx, "Background Color", MU_OPT_EXPANDED))
         {
