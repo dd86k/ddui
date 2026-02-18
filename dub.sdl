@@ -6,3 +6,4 @@ copyright "Copyright © 2022, dd86k <dd@dax.moe>"
 license "BSD-3-Clause"
 
 subPackage "demo"
+subPackage "demo_app"
