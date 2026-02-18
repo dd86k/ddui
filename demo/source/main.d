@@ -385,11 +385,14 @@ void test_window(mu_Context *ctx)
             mu_label(ctx, "Red:");   mu_slider(ctx, &bg[0], 0, 255);
             mu_label(ctx, "Green:"); mu_slider(ctx, &bg[1], 0, 255);
             mu_label(ctx, "Blue:");  mu_slider(ctx, &bg[2], 0, 255);
+            mu_Color color =
+                mu_Color(cast(ubyte)bg[0], cast(ubyte)bg[1], cast(ubyte)bg[2], 255);
+            mu_label(ctx, "Red%:");
+            mu_progress_colored(ctx, (bg[0] + bg[1] + bg[2]) * 100.0 / (255 * 3), 0, 100, color);
             mu_layout_end_column(ctx);
             // color preview
             mu_Rect r = mu_layout_next(ctx);
-            mu_draw_rect(ctx, r,
-                mu_Color(cast(ubyte)bg[0], cast(ubyte)bg[1], cast(ubyte)bg[2], 255));
+            mu_draw_rect(ctx, r, color);
             char[32] buf = void;
             sprintf(buf.ptr, "#%02X%02X%02X",
                 cast(int)bg[0], cast(int)bg[1], cast(int)bg[2]);

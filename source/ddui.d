@@ -401,6 +401,19 @@ int mu_number(mu_Context* ctx, mu_Real* value, mu_Real step)
     return mu_number_ex(ctx, value, step, MU_SLIDER_FMT, MU_OPT_ALIGNCENTER);
 }
 
+/// Creates a progress bar.
+void mu_progress(mu_Context* ctx, mu_Real value, mu_Real low, mu_Real high)
+{
+    mu_progress_ex(ctx, value, low, high, "%.0f%%", MU_OPT_ALIGNCENTER, null);
+}
+
+/// Creates a progress bar with a custom fill color.
+void mu_progress_colored(mu_Context* ctx, mu_Real value, mu_Real low, mu_Real high,
+    mu_Color color)
+{
+    mu_progress_ex(ctx, value, low, high, "%.0f%%", MU_OPT_ALIGNCENTER, &color);
+}
+
 /// Creates a dropdown.
 int mu_dropdown(mu_Context* ctx, int* selected, const(char*)* items, int item_count)
 {
@@ -1486,6 +1499,37 @@ int mu_slider_ex(mu_Context* ctx, mu_Real* value, mu_Real low, mu_Real high,
     mu_draw_control_text(ctx, buf.ptr, base, MU_COLOR_TEXT, opt);
 
     return res;
+}
+
+/// Creates a progress bar (extended version).
+/// Pass a non-null color pointer to override the default fill color.
+void mu_progress_ex(mu_Context* ctx, mu_Real value, mu_Real low, mu_Real high,
+    const(char)* fmt, int opt, const(mu_Color)* color)
+{
+    mu_Real v = mu_clamp(value, low, high);
+    mu_Rect base = mu_layout_next(ctx);
+
+    // draw base
+    if (!(opt & MU_OPT_NOFRAME))
+    {
+        mu_draw_frame(ctx, base, MU_COLOR_SCROLLBASE);
+    }
+
+    // draw fill
+    int fill_w = cast(int)((v - low) * base.w / (high - low));
+    if (fill_w > 0)
+    {
+        mu_Color fill = color ? *color : ctx.style.colors[MU_COLOR_SCROLLTHUMB];
+        mu_draw_rect(ctx, mu_Rect(base.x, base.y, fill_w, base.h), fill);
+    }
+
+    // draw text
+    if (fmt)
+    {
+        char[MU_MAX_FMT] buf = void;
+        sprintf(buf.ptr, fmt, v);
+        mu_draw_control_text(ctx, buf.ptr, base, MU_COLOR_TEXT, opt);
+    }
 }
 
 int mu_number_ex(mu_Context* ctx, mu_Real* value, mu_Real step,
