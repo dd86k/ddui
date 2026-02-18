@@ -2,7 +2,7 @@
 
 ![demo](images/demo.png)
 
-ddui is a BetterC compatible Immediate Mode User Interface.
+ddui is a BetterC-compatible Immediate Mode User Interface.
 
 This is a D port of [rxi/microui](https://github.com/rxi/microui) after being
 angry at my Imgui/Nuklear bindings not working. I'd like to personally thank rxi
@@ -20,23 +20,19 @@ to be implemented in your application in order to work.
 
 # Roadmap
 
-- Rename mu_ prefixes.
 - Embedded documentation.
 - Improve string handling.
   - Maybe introduce string_t, at least reduce dependency on strlen.
-- Replace FNV-1a hash by Murmurhash3-32.
-- Improve ID system.
 - Textbox input navigation.
-- Triangle corner hint and/or cursor change for resizable windows.
-- Fix window dragging when on-top of each other for current example.
 - Fix z-index global state (window management).
 
-# Example
+# Examples
 
-There is currently only one example using SDL2 and OpenGL 1.1 or OpenGL 3.3.
+There are two examples: `demo` (multi-embedded windows) and `demo_app` (full window).
 
-Building the demo:
-1. Navigate to the `demo` directory.
-2. Obviously, you'll need a fairly recent DUB and D compiler.
-3. Install the SDL2 library (Ubuntu: `libsdl2` package, Windows: place `sdl2.dll` in directory). (Note: this uses the dynamic configuration)
-4. Type `dub`.
+Both use SDL2 dynamic packages, which you will need on your system.
+On Windows, place `sdl2.dll` in the same directory.
+
+Both have `gl11` (OpenGL 1.1, default) and `gl33` (OpenGL 3.3) configurations.
+
+Running the `demo` example: `dub :demo -c gl33 --compiler=ldc2`
