@@ -37,7 +37,7 @@ extern (C):
 //      e.g., if initial size isn't enough, allocate more (forever)
 //      might not be viable since dynamic allocation is performed
 
-enum MU_VERSION = "0.0.1";
+enum MU_VERSION = "0.0.3";
 
 /// Buffer size for text command.
 /// This affects all labels and text inputs.
