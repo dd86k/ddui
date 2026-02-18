@@ -30,7 +30,5 @@ configuration "gl11" {
 }
 configuration "gl33" {
 	versions "Demo_GL33"
-	// GL33+ARB crash at glGenVertexArrays since it doesn't get loaded
-	// Part of GL_ARB, GL_ARB_vertex_array_object
 	versions "GL_33" "GL_ARB"
 }

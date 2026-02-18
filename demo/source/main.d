@@ -51,17 +51,7 @@ void main(int argc, const(char) **args)
     printf("* COMPILER    : "~__VENDOR__~" v%u.%03u\n", version_major, version_minor);
     printf("* CONFIG      : "~CONFIGURATION~"\n");
     
-    // Comment this section if you plan to use
-    // the bindbc-sdl:staticBC configuration.
-    version (Windows)
-    {
-        SDLSupport sdlstatus = loadSDL("sdl2.dll");
-    }
-    else
-    {
-        SDLSupport sdlstatus = loadSDL();
-    }
-    
+    SDLSupport sdlstatus = loadSDL();
     switch (sdlstatus) with (SDLSupport) {
     case noLibrary:  assert(0, "No SDL libraries found on system, aborting.");
     case badLibrary: assert(0, "SDL library older than configuration, aborting.");
@@ -85,6 +75,7 @@ void main(int argc, const(char) **args)
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         window_width, window_height,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+    SDL_SetWindowMinimumSize(window, 600, 400);
     glctx  = SDL_GL_CreateContext(window);
     SDL_GL_SetSwapInterval(cli_vsync);
 
@@ -98,8 +89,8 @@ void main(int argc, const(char) **args)
     
     // OpenGL setup
     initiate_renderer();
-    printf("* GL_RENDERER   : %s\n", glGetString(GL_RENDERER));
-    printf("* GL_VERSION    : %s\n", glGetString(GL_VERSION));
+    printf("* GL_RENDERER : %s\n", glGetString(GL_RENDERER));
+    printf("* GL_VERSION  : %s\n", glGetString(GL_VERSION));
     if (cli_debug)
         printf("* GL_EXTENSIONS : %s\n", glGetString(GL_EXTENSIONS));
     
