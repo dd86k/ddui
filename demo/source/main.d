@@ -182,15 +182,16 @@ void main(int argc, const(char) **args)
         stat_id       = uictx.id_stack.idx;
         sw_commands.start;
         r_clear(mu_Color(cast(ubyte)bg[0], cast(ubyte)bg[1], cast(ubyte)bg[2], 255));
-        foreach (ref mu_Command cmd ; mu_command_range(&uictx))
+        mu_Command *cmd;
+        while (mu_get_next_command(&uictx, &cmd))
         {
             switch (cmd.type)
             {
-                case MU_COMMAND_TEXT: r_draw_text(cmd.text.str.ptr, cmd.text.pos, cmd.text.color); continue;
-                case MU_COMMAND_RECT: r_draw_rect(cmd.rect.rect, cmd.rect.color); continue;
-                case MU_COMMAND_ICON: r_draw_icon(cmd.icon.id, cmd.icon.rect, cmd.icon.color); continue;
-                case MU_COMMAND_CLIP: r_set_clip_rect(cmd.clip.rect); continue;
-                default: continue;
+                case MU_COMMAND_TEXT: r_draw_text(cmd.text.str.ptr, cmd.text.pos, cmd.text.color); break;
+                case MU_COMMAND_RECT: r_draw_rect(cmd.rect.rect, cmd.rect.color); break;
+                case MU_COMMAND_ICON: r_draw_icon(cmd.icon.id, cmd.icon.rect, cmd.icon.color); break;
+                case MU_COMMAND_CLIP: r_set_clip_rect(cmd.clip.rect); break;
+                default:
             }
         }
         sw_commands.stop;

@@ -24,7 +24,6 @@ to be implemented in your application in order to work.
 - Improve string handling.
   - Maybe introduce string_t, at least reduce dependency on strlen.
 - Textbox input navigation.
-- Fix z-index global state (window management).
 
 # Examples
 

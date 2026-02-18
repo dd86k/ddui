@@ -593,10 +593,19 @@ void mu_end(mu_Context* ctx)
     ctx.scroll_delta = mu_Vec2(0, 0);
     ctx.last_mouse_pos = ctx.mouse_pos;
 
-    // sort root containers by zindex
+    // sort root containers by zindex (insertion sort, max MU_ROOTLIST_SIZE=32 elements)
+    // needed to track zindex, otherwise very minimal perf impact
     size_t n = ctx.root_list.idx;
-    // NOTE: May cause crashes across different C runtimes (e.g., MSVC)
-    //qsort(ctx.root_list.items.ptr, n, (mu_Container*).sizeof, &mu_compare_zindex);
+    for (size_t i = 1; i < n; i++)
+    {
+        mu_Container* key = ctx.root_list.items[i];
+        size_t j = i;
+        while (j > 0 && ctx.root_list.items[j - 1].zindex > key.zindex) {
+            ctx.root_list.items[j] = ctx.root_list.items[j - 1];
+            j--;
+        }
+        ctx.root_list.items[j] = key;
+    }
     
     // Set root container jump commands
     // First container should have the first command jump to it
@@ -856,13 +865,26 @@ mu_Command* mu_push_command(mu_Context* ctx, int type)
     return cmd;
 }
 
+/// Get the range of commands as they appear in the command list,
+/// useful with a foreach loop.
+///
+/// However, if you do care about zindex ordering (for multi-window),
+/// use mu_get_next_command instead.
+/// Params: ctx = ddui context.
+/// Returns: Commands.
 mu_Command[] mu_command_range(mu_Context* ctx)
 {
     return ctx.command_list.items.ptr[0 .. ctx.command_list.idx];
 }
 
-deprecated("Use mu_get_next_command. This will be removed in the next version.")
-int mu_next_command(mu_Context* ctx, mu_Command** cmd)
+/// An alternative to mu_command_range, iterate commands in z-index order
+/// by following JUMP commands, useful if you plan to use multi-window.
+/// Params:
+///     ctx = ddui context.
+///     cmd = Command pointer, needs to be intiated to null.
+/// Returns: 1 while there are commands.
+// Initialize cmd to null, call in a while loop. Returns 1 while commands remain.
+int mu_get_next_command(mu_Context* ctx, mu_Command** cmd)
 {
     if (*cmd)
     {
@@ -881,6 +903,12 @@ int mu_next_command(mu_Context* ctx, mu_Command** cmd)
         *cmd = &ctx.command_list.items[(*cmd).jump.dst_idx];
     }
     return 0;
+}
+
+deprecated("Use mu_get_next_command.")
+int mu_next_command(mu_Context* ctx, mu_Command** cmd)
+{
+    return mu_get_next_command(ctx, cmd);
 }
 
 int mu_push_jump(mu_Context* ctx, int idx)
