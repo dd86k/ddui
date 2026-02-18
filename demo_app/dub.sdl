@@ -5,12 +5,12 @@ authors "dd86k <dd@dax.moe>"
 copyright "Copyright © 2022, dd86k <dd@dax.moe>"
 license "BSD-3-Clause"
 
-versions "SDL" "SDL_2010"
+versions "SDL" "SDL_2022"
 versions "GL"
 
 dependency "bindbc-opengl" version="~>1.1.1"
 dependency "bindbc-loader" version="~>1.1.5"
-dependency "bindbc-sdl" version="~>2.3.3"
+dependency "bindbc-sdl" version="~>1.5.2"
 dependency "ddui" path="../"
 
 subConfiguration "bindbc-opengl" "dynamicBC"
@@ -23,7 +23,7 @@ dflags "-fno-druntime" platform="gdc"
 
 configuration "gl11" {
 	versions "Demo_GL11"
-	versions "GL_AllowDeprecated"
+	versions "GL_AllowDeprecated" # Due to some OpenGL 1.1 functions
 }
 configuration "gl33" {
 	versions "Demo_GL33"

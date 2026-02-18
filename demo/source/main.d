@@ -6,7 +6,7 @@ import core.stdc.string;
 import core.stdc.ctype;
 import core.stdc.stdarg;
 import bindbc.opengl;
-import bindbc.sdl, bindbc.sdl.dynload;
+import bindbc.sdl;
 import ddui, stopwatch;
 version (Demo_GL33)
     import renderer.sdl2.gl33;
@@ -51,12 +51,22 @@ void main(int argc, const(char) **args)
     printf("* COMPILER    : "~__VENDOR__~" v%u.%03u\n", version_major, version_minor);
     printf("* CONFIG      : "~CONFIGURATION~"\n");
     
+    // NOTE: bindbc-sdl 1.2.1 -> 1.5.2
+    //       SDLSupport changed from being an integral type (int) to a structure
+    //       Why? No idea, 3 byte fields, which would fit in... an int.
+    //       Whatever.
     SDLSupport sdlstatus = loadSDL();
+    if (sdlstatus == SDLSupport.noLibrary)
+        assert(0, "No SDL libraries found on system, aborting.");
+    else if (sdlstatus == SDLSupport.badLibrary)
+        assert(0, "SDL library older than configuration, aborting.");
+    /*
     switch (sdlstatus) with (SDLSupport) {
     case noLibrary:  assert(0, "No SDL libraries found on system, aborting.");
     case badLibrary: assert(0, "SDL library older than configuration, aborting.");
     default:
     }
+    */
     
     // Setup SDL
     SDL_SetHint(SDL_HINT_VIDEO_HIGHDPI_DISABLED, "0");
