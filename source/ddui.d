@@ -33,11 +33,7 @@ import core.stdc.string;
 
 extern (C):
 
-//TODO: Consider ballooning command stack
-//      e.g., if initial size isn't enough, allocate more (forever)
-//      might not be viable since dynamic allocation is performed
-
-enum MU_VERSION = "0.0.3";
+enum MU_VERSION = "0.1.0";
 
 /// Buffer size for text command.
 /// This affects all labels and text inputs.
@@ -246,7 +242,6 @@ struct mu_TextCommand
     mu_Font font;
     mu_Vec2 pos;
     mu_Color color;
-    //TODO: Consider adding size_t length
     char[MU_TEXTSTACK_SIZE] str;
 }
 
@@ -279,7 +274,6 @@ struct mu_Layout
     mu_Vec2 position;
     mu_Vec2 size;
     mu_Vec2 max;
-    //TODO: Consider columns pointer with count
     int[MU_MAX_WIDTHS] widths;
     int items;
     int item_index;
@@ -374,7 +368,7 @@ struct mu_Context
     int mouse_pressed;
     int key_down;
     int key_pressed;
-    char[MU_TEXT_LEN] input_text; //TODO: Move into text_stack?
+    char[MU_TEXT_LEN] input_text;
 }
 
 /// Creates a button.
@@ -1489,7 +1483,7 @@ int mu_slider_ex(mu_Context* ctx, mu_Real* value, mu_Real low, mu_Real high,
 
     // draw thumb
     int w = ctx.style.thumb_size;
-    int x = cast(int)((v - low) * (base.w - w) / (high - low)); //TODO: fix float to int
+    int x = cast(int)((v - low) * (base.w - w) / (high - low));
     mu_Rect thumb = mu_Rect(base.x + x, base.y, w, base.h);
     mu_draw_control_frame(ctx, id, thumb, MU_COLOR_BUTTON, opt);
 
