@@ -632,11 +632,9 @@ void mu_end(mu_Context* ctx)
         mu_Container* cnt  = ctx.root_list.items[i];
         mu_Container* prev = ctx.root_list.items[i - 1];
         ctx.command_list.items[prev.tail_idx].jump.dst_idx = cnt.head_idx + 1;
-        if (i == n - 1)
-        {
-            ctx.command_list.items[cnt.tail_idx].jump.dst_idx = cast(int)ctx.command_list.idx;
-        }
     }
+    // Set last container's tail to jump past end of command list
+    ctx.command_list.items[ctx.root_list.items[n - 1].tail_idx].jump.dst_idx = cast(int)ctx.command_list.idx;
 }
 
 void mu_set_focus(mu_Context* ctx, mu_Id id)
