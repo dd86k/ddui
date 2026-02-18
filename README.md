@@ -1,7 +1,5 @@
 # ddui, Immediate Mode UI
 
-**No longer maintained.**
-
 ![demo](images/demo.png)
 
 ddui is a BetterC compatible Immediate Mode User Interface.
@@ -14,18 +12,14 @@ Like the original, the library does not do any rendering of its own, but contain
 commands to draw text, shapes, and icons originating from the library that needs
 to be implemented in your application in order to work.
 
-**NOTE**: A few things broke when converting the source to D, and I'm still new to OpenGL!
-
 # Features
 
 - BetterC compatibility.
 - Index-based command stack buffer.
 - Demo: Fixed host window resizing (clipping).
-  - But broke control clipping...
 
 # Roadmap
 
-- Simplify codebase.
 - Rename mu_ prefixes.
 - Embedded documentation.
 - Improve string handling.
@@ -36,12 +30,10 @@ to be implemented in your application in order to work.
 - Triangle corner hint and/or cursor change for resizable windows.
 - Fix window dragging when on-top of each other for current example.
 - Fix z-index global state (window management).
-- Demo: Support OpenGL 3.3 and/or ES 2.0.
-- (Considering) Dedicated helper functions to aid SDL2/Allegro/GLFW integration.
 
 # Example
 
-There is currently only one example using SDL2 and OpenGL 1.1.
+There is currently only one example using SDL2 and OpenGL 1.1 or OpenGL 3.3.
 
 Building the demo:
 1. Navigate to the `demo` directory.
