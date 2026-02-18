@@ -35,3 +35,9 @@ On Windows, place `sdl2.dll` in the same directory.
 Both have `gl11` (OpenGL 1.1, default) and `gl33` (OpenGL 3.3) configurations.
 
 Running the `demo` example: `dub :demo -c gl33 --compiler=ldc2`
+
+Both demos have these options:
+- `--debug`: Show debug information on screen (`demo` only)
+- `--vsync`: Force vsync on (this is the default)
+- `--no-vsync`: Force vsync off
+- `--adaptive-vsync`: Use adaptive vsync

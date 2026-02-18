@@ -15,14 +15,25 @@ ddui is a BetterC-compatible Immediate Mode UI library written in D, ported from
 dub
 ```
 
-**Demo application** (requires SDL2 installed):
+Both demos require SDL2 dynamic libraries to be installed.
+
+**Demo application** (multi-window):
 ```
 dub run ddui:demo                          # default (GL 1.1)
 dub run ddui:demo --configuration=gl11     # OpenGL 1.1
 dub run ddui:demo --configuration=gl33     # OpenGL 3.3
 ```
 
+**Demo application** (full-window):
+```
+dub run ddui:demo_app                          # default (GL 1.1)
+dub run ddui:demo_app --configuration=gl11     # OpenGL 1.1
+dub run ddui:demo_app --configuration=gl33     # OpenGL 3.3
+```
+
 There is no test suite. The demo application serves as the functional test.
+
+Important: Currently, dmd 2.112 has issues compiling BetterC code. Switch to `gdc` or `ldc2` for testing.
 
 ## Architecture
 
