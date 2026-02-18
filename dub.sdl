@@ -7,3 +7,4 @@ license "BSD-3-Clause"
 
 subPackage "demo"
 subPackage "demo_app"
+subPackage "skeleton"

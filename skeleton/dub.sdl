@@ -1,0 +1,23 @@
+name "skeleton"
+targetType "executable"
+description "Minimal DDUI skeleton using SDL2 + OpenGL ES 2.0"
+authors "dd86k <dd@dax.moe>"
+copyright "Copyright © 2022, dd86k <dd@dax.moe>"
+license "BSD-3-Clause"
+
+# NOTE: bindbc-sdl 2.0 supports SDL3 only, regardless of versions defined
+versions "SDL" "SDL_2022"
+versions "GL" "GL_AllowDeprecated" # needed for GL_LUMINANCE
+
+dependency "bindbc-opengl" version="~>1.1.1"
+dependency "bindbc-loader" version="~>1.1.5"
+dependency "bindbc-sdl" version="~>1.5.2"
+dependency "ddui" path="../"
+
+subConfiguration "bindbc-opengl" "dynamicBC"
+subConfiguration "bindbc-loader" "yesBC"
+subConfiguration "bindbc-sdl" "dynamicBC"
+
+buildOptions "betterC" platform="dmd"
+buildOptions "betterC" platform="ldc"
+dflags "-fno-druntime" platform="gdc"

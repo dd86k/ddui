@@ -217,7 +217,6 @@ __gshared Tab active_tab = Tab.color_mixer;
 void full_window(mu_Context *ctx)
 {
     enum opt = MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME | MU_OPT_NOSCROLL;
-
     if (mu_begin_window_ex(ctx, "Full Window", mu_Rect(0, 0, window_width, window_height), opt))
     {
         mu_Container *win = mu_get_current_container(ctx);

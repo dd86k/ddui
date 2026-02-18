@@ -19,6 +19,7 @@ ddui-test-*
 dub.selections.json
 demo/ddui_demo
 demo_app/ddui_demo_app
+skeleton/ddui_skeleton
 
 # Claude
 .claude/
