@@ -5,12 +5,15 @@ import core.stdc.stdio : printf, sprintf, snprintf;
 import core.stdc.string;
 import core.stdc.ctype;
 import core.stdc.stdarg;
-import bindbc.opengl;
+version (Demo_Software) {} else
+    import bindbc.opengl;
 import bindbc.sdl;
 import bindbc.loader.sharedlib;
 import ddui, stopwatch;
 version (Demo_GL33)
     import renderer.sdl2.gl33;
+else version (Demo_Software)
+    import renderer.sdl2.software;
 else
     import renderer.sdl2.gl11;
 
@@ -20,7 +23,8 @@ extern (C):
 __gshared int window_width  = 960;
 __gshared int window_height = 640;
 __gshared SDL_Window *window;
-__gshared SDL_GLContext glctx;
+version (Demo_Software) {} else
+    __gshared SDL_GLContext glctx;
 __gshared mu_Context uictx;
 
 void main(int argc, const(char) **args)
@@ -63,24 +67,35 @@ void main(int argc, const(char) **args)
         assert(0, "SDL library older than configuration, aborting.");
 
     // Setup SDL
+    version (Demo_Software)
+        SDL_SetHint(SDL_HINT_FRAMEBUFFER_ACCELERATION, "0");
     SDL_SetHint(SDL_HINT_VIDEO_HIGHDPI_DISABLED, "0");
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    version (Demo_GL33)
+    version (Demo_Software) {} else
     {
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        version (Demo_GL33)
+        {
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+        }
+        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     }
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
     // Initiate SDL window
+    version (Demo_Software)
+        enum winflags = SDL_WINDOW_RESIZABLE;
+    else
+        enum winflags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
     window = SDL_CreateWindow("DDUI App Demo",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        window_width, window_height,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+        window_width, window_height, winflags);
     SDL_SetWindowMinimumSize(window, 600, 400);
-    glctx  = SDL_GL_CreateContext(window);
-    SDL_GL_SetSwapInterval(cli_vsync);
+    version (Demo_Software) {} else
+    {
+        glctx  = SDL_GL_CreateContext(window);
+        SDL_GL_SetSwapInterval(cli_vsync);
+    }
 
     // Print SDL version
     SDL_version verconf = void, verdyn = void;
@@ -90,12 +105,15 @@ void main(int argc, const(char) **args)
         verconf.major, verconf.minor, verconf.patch,
         verdyn.major, verdyn.minor, verdyn.patch);
 
-    // OpenGL setup
+    // Renderer setup
     initiate_renderer();
-    printf("* GL_RENDERER : %s\n", glGetString(GL_RENDERER));
-    printf("* GL_VERSION  : %s\n", glGetString(GL_VERSION));
-    if (cli_debug)
-        printf("* GL_EXTENSIONS : %s\n", glGetString(GL_EXTENSIONS));
+    version (Demo_Software) {} else
+    {
+        printf("* GL_RENDERER : %s\n", glGetString(GL_RENDERER));
+        printf("* GL_VERSION  : %s\n", glGetString(GL_VERSION));
+        if (cli_debug)
+            printf("* GL_EXTENSIONS : %s\n", glGetString(GL_EXTENSIONS));
+    }
 
     // Init UI
     mu_init(&uictx);
@@ -197,7 +215,8 @@ void main(int argc, const(char) **args)
     }
 
     destroy_renderer();
-    SDL_GL_DeleteContext(glctx);
+    version (Demo_Software) {} else
+        SDL_GL_DeleteContext(glctx);
     SDL_DestroyWindow(window);
     SDL_Quit();
 }
