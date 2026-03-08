@@ -57,8 +57,9 @@ void main()
     Lapp: while (true)
     {
         SDL_Event e = void;
-        while (SDL_PollEvent(&e))
-        {
+        if (!SDL_WaitEventTimeout(&e, 16))
+            continue;
+        do {
             switch (e.type)
             {
                 case SDL_QUIT: break Lapp;
@@ -105,7 +106,7 @@ void main()
 
                 default:
             }
-        }
+        } while (SDL_PollEvent(&e));
 
         // Process UI
         mu_begin(&uictx);

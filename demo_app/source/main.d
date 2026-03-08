@@ -109,8 +109,12 @@ void main(int argc, const(char) **args)
         // Transmit SDL input events to UI
         SDL_Event e = void;
         sw_input.start;
-        while (SDL_PollEvent(&e))
+        if (!SDL_WaitEventTimeout(&e, 16))
         {
+            sw_input.stop;
+            continue;
+        }
+        do {
             switch (e.type)
             {
                 case SDL_QUIT: break Lgame;
@@ -158,7 +162,7 @@ void main(int argc, const(char) **args)
 
                 default:
             }
-        }
+        } while (SDL_PollEvent(&e));
         sw_input.stop;
 
         // Process UI
