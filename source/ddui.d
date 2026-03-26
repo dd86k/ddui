@@ -763,6 +763,12 @@ mu_Container* mu_get_container2(mu_Context* ctx, mu_Id id, int opt)
     idx = mu_pool_init(ctx, ctx.container_pool.ptr, MU_CONTAINERPOOL_SIZE, id);
     mu_Container* cnt = &ctx.containers[idx];
     memset(cnt, 0, mu_Container.sizeof);
+    // memset zeroes head_idx/tail_idx to 0, but mu_in_hover_root uses -1
+    // as the sentinel for "not a root container". Without this, panels get
+    // head_idx=0 which is treated as a valid root, breaking hover detection
+    // for all controls inside panels.
+    cnt.head_idx = -1;
+    cnt.tail_idx = -1;
     cnt.open = 1;
     mu_bring_to_front(ctx, cnt);
     return cnt;
