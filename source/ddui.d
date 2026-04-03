@@ -1983,102 +1983,103 @@ else
     extern (D):
 
     private int slen(string s) { return cast(int) s.length; }
+    private const(char)* sptr(string s) { return s.length ? s.ptr : "".ptr; }
 
     int mu_button(mu_Context* ctx, string label)
     {
-        return mu_button_ex(ctx, label.ptr, 0, MU_OPT_ALIGNCENTER, slen(label));
+        return mu_button_ex(ctx, sptr(label), 0, MU_OPT_ALIGNCENTER, slen(label));
     }
 
     int mu_button_ex(mu_Context* ctx, string label, int icon, int opt)
     {
-        return mu_button_ex(ctx, label.ptr, icon, opt, slen(label));
+        return mu_button_ex(ctx, sptr(label), icon, opt, slen(label));
     }
 
     int mu_checkbox(mu_Context* ctx, string label, int* state)
     {
-        return mu_checkbox(ctx, label.ptr, state, slen(label));
+        return mu_checkbox(ctx, sptr(label), state, slen(label));
     }
 
     void mu_text(mu_Context* ctx, string text)
     {
-        mu_text(ctx, text.ptr, slen(text));
+        mu_text(ctx, sptr(text), slen(text));
     }
 
     void mu_label(mu_Context* ctx, string text)
     {
-        mu_label(ctx, text.ptr, slen(text));
+        mu_label(ctx, sptr(text), slen(text));
     }
 
     int mu_header(mu_Context* ctx, string label)
     {
-        return mu_header_ex(ctx, label.ptr, 0, slen(label));
+        return mu_header_ex(ctx, sptr(label), 0, slen(label));
     }
 
     int mu_header_ex(mu_Context* ctx, string label, int opt)
     {
-        return mu_header_ex(ctx, label.ptr, opt, slen(label));
+        return mu_header_ex(ctx, sptr(label), opt, slen(label));
     }
 
     int mu_begin_treenode(mu_Context* ctx, string label)
     {
-        return mu_begin_treenode_ex(ctx, label.ptr, 0, slen(label));
+        return mu_begin_treenode_ex(ctx, sptr(label), 0, slen(label));
     }
 
     int mu_begin_treenode_ex(mu_Context* ctx, string label, int opt)
     {
-        return mu_begin_treenode_ex(ctx, label.ptr, opt, slen(label));
+        return mu_begin_treenode_ex(ctx, sptr(label), opt, slen(label));
     }
 
     int mu_begin_window(mu_Context* ctx, string title, mu_Rect rect)
     {
-        return mu_begin_window_ex(ctx, title.ptr, rect, 0, slen(title));
+        return mu_begin_window_ex(ctx, sptr(title), rect, 0, slen(title));
     }
 
     int mu_begin_window_ex(mu_Context* ctx, string title, mu_Rect rect, int opt)
     {
-        return mu_begin_window_ex(ctx, title.ptr, rect, opt, slen(title));
+        return mu_begin_window_ex(ctx, sptr(title), rect, opt, slen(title));
     }
 
     mu_Container* mu_begin_panel(mu_Context* ctx, string name)
     {
-        return mu_begin_panel_ex(ctx, name.ptr, 0, slen(name));
+        return mu_begin_panel_ex(ctx, sptr(name), 0, slen(name));
     }
 
     mu_Container* mu_begin_panel_ex(mu_Context* ctx, string name, int opt)
     {
-        return mu_begin_panel_ex(ctx, name.ptr, opt, slen(name));
+        return mu_begin_panel_ex(ctx, sptr(name), opt, slen(name));
     }
 
     mu_Container* mu_get_container(mu_Context* ctx, string name)
     {
-        return mu_get_container(ctx, name.ptr, slen(name));
+        return mu_get_container(ctx, sptr(name), slen(name));
     }
 
     void mu_open_popup(mu_Context* ctx, string name)
     {
-        mu_open_popup(ctx, name.ptr, slen(name));
+        mu_open_popup(ctx, sptr(name), slen(name));
     }
 
     int mu_begin_popup(mu_Context* ctx, string name)
     {
-        return mu_begin_popup(ctx, name.ptr, slen(name));
+        return mu_begin_popup(ctx, sptr(name), slen(name));
     }
 
     void mu_input_text(mu_Context* ctx, string text)
     {
-        mu_input_text(ctx, text.ptr, slen(text));
+        mu_input_text(ctx, sptr(text), slen(text));
     }
 
     void mu_draw_text(mu_Context* ctx, mu_Font font, string str,
         mu_Vec2 pos, mu_Color color)
     {
-        mu_draw_text(ctx, font, str.ptr, slen(str), pos, color);
+        mu_draw_text(ctx, font, sptr(str), slen(str), pos, color);
     }
 
     void mu_draw_control_text(mu_Context* ctx, string str, mu_Rect rect,
         int colorid, int opt)
     {
-        mu_draw_control_text(ctx, str.ptr, rect, colorid, opt, slen(str));
+        mu_draw_control_text(ctx, sptr(str), rect, colorid, opt, slen(str));
     }
 
     int mu_slider_ex(mu_Context* ctx, mu_Real* value, mu_Real low, mu_Real high,
