@@ -386,7 +386,7 @@ int mu_textbox(mu_Context* ctx, char* buf, int bufsz)
 /// Creates a slider.
 int mu_slider(mu_Context* ctx, mu_Real* value, mu_Real low, mu_Real high)
 {
-    return mu_slider_ex(ctx, value, low, high, 0, MU_SLIDER_FMT, MU_OPT_ALIGNCENTER);
+    return mu_slider_ex(ctx, value, low, high, cast(mu_Real) 0, MU_SLIDER_FMT, MU_OPT_ALIGNCENTER);
 }
 
 /// Creates a number box.
@@ -398,14 +398,14 @@ int mu_number(mu_Context* ctx, mu_Real* value, mu_Real step)
 /// Creates a progress bar.
 void mu_progress(mu_Context* ctx, mu_Real value, mu_Real low, mu_Real high)
 {
-    mu_progress_ex(ctx, value, low, high, "%.0f%%", MU_OPT_ALIGNCENTER, null);
+    mu_progress_ex(ctx, value, low, high, cast(const(char)*) "%.0f%%", MU_OPT_ALIGNCENTER, null);
 }
 
 /// Creates a progress bar with a custom fill color.
 void mu_progress_colored(mu_Context* ctx, mu_Real value, mu_Real low, mu_Real high,
     mu_Color color)
 {
-    mu_progress_ex(ctx, value, low, high, "%.0f%%", MU_OPT_ALIGNCENTER, &color);
+    mu_progress_ex(ctx, value, low, high, cast(const(char)*) "%.0f%%", MU_OPT_ALIGNCENTER, &color);
 }
 
 /// Creates a dropdown.
