@@ -1480,7 +1480,8 @@ int mu_slider_ex(mu_Context* ctx, mu_Real* value, mu_Real low, mu_Real high,
         v = low + (ctx.mouse_pos.x - base.x) * (high - low) / base.w;
         if (step)
         {
-            v = ((v + step / 2) / step) * step;
+            import core.stdc.math : floorf;
+            v = floorf((v / step) + 0.5f) * step;
         }
     }
     
