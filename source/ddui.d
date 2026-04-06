@@ -1734,7 +1734,8 @@ void mu_scrollbar(mu_Context* ctx, mu_Container* cnt,
         mu_update_control(ctx, id, base, 0);
         if (ctx.focus == id && ctx.mouse_down == MU_MOUSE_LEFT)
         {
-            cnt.scroll.y += ctx.mouse_delta.y * cs.y / base.h;
+            int thumbh = mu_max(ctx.style.thumb_size, base.h * b.h / cs.y);
+            cnt.scroll.y += ctx.mouse_delta.y * maxscroll / (base.h - thumbh);
         }
 
         // clamp scroll to limits
