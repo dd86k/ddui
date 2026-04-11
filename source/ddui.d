@@ -378,9 +378,9 @@ int mu_button(mu_Context* ctx, const(char)* label)
 }
 
 /// Creates a editable textbox.
-int mu_textbox(mu_Context* ctx, char* buf, int bufsz)
+int mu_textbox(mu_Context* ctx, char* buf, int bufsz, int length = -1)
 {
-    return mu_textbox_ex(ctx, buf, bufsz, 0);
+    return mu_textbox_ex(ctx, buf, bufsz, 0, length);
 }
 
 /// Creates a slider.
@@ -1362,15 +1362,16 @@ int mu_checkbox(mu_Context* ctx, const(char)* label, int* state, int len = -1)
 }
 
 int mu_textbox_raw(mu_Context* ctx, char* buf, int bufsz, mu_Id id, mu_Rect r,
-    int opt)
+    int opt, int length = -1)
 {
     int res = 0;
     mu_update_control(ctx, id, r, opt | MU_OPT_HOLDFOCUS);
 
+    size_t len = length < 0 ? strlen(buf) : cast(size_t) length;
+
     if (ctx.focus == id)
     {
         // handle text input
-        size_t len = strlen(buf);
         size_t n = mu_min(bufsz - len - 1, strlen(ctx.input_text.ptr));
         if (n > 0)
         {
@@ -1403,19 +1404,19 @@ int mu_textbox_raw(mu_Context* ctx, char* buf, int bufsz, mu_Id id, mu_Rect r,
     {
         mu_Color color = ctx.style.colors[MU_COLOR_TEXT];
         mu_Font font = ctx.style.font;
-        int textw = ctx.text_width(font, buf, -1);
+        int textw = ctx.text_width(font, buf, cast(int) len);
         int texth = ctx.text_height(font);
         int ofx = r.w - ctx.style.padding - textw - 1;
         int textx = r.x + mu_min(ofx, ctx.style.padding);
         int texty = r.y + (r.h - texth) / 2;
         mu_push_clip_rect(ctx, r);
-        mu_draw_text(ctx, font, buf, -1, mu_Vec2(textx, texty), color);
+        mu_draw_text(ctx, font, buf, cast(int) len, mu_Vec2(textx, texty), color);
         mu_draw_rect(ctx, mu_Rect(textx + textw, texty, 1, texth), color);
         mu_pop_clip_rect(ctx);
     }
     else
     {
-        mu_draw_control_text(ctx, buf, r, MU_COLOR_TEXT, opt);
+        mu_draw_control_text(ctx, buf, r, MU_COLOR_TEXT, opt, cast(int) len);
     }
 
     return res;
@@ -1449,11 +1450,11 @@ int mu_number_textbox(mu_Context* ctx, mu_Real* value, mu_Rect r, mu_Id id)
     return 0;
 }
 
-int mu_textbox_ex(mu_Context* ctx, char* buf, int bufsz, int opt)
+int mu_textbox_ex(mu_Context* ctx, char* buf, int bufsz, int opt, int length = -1)
 {
     mu_Id id = mu_get_id(ctx, &buf, buf.sizeof);
     mu_Rect r = mu_layout_next(ctx);
-    return mu_textbox_raw(ctx, buf, bufsz, id, r, opt);
+    return mu_textbox_raw(ctx, buf, bufsz, id, r, opt, length);
 }
 
 int mu_slider_ex(mu_Context* ctx, mu_Real* value, mu_Real low, mu_Real high,
