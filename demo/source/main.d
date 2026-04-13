@@ -531,6 +531,7 @@ immutable const(ubyte)[256] key_map = [
     SDLK_RETURN       & 0xff : MU_KEY_RETURN,
     SDLK_KP_ENTER     & 0xff : MU_KEY_RETURN,
     SDLK_BACKSPACE    & 0xff : MU_KEY_BACKSPACE,
+    SDLK_TAB          & 0xff : MU_KEY_TAB,
 ];
 
 int text_width(mu_Font font, const(char) *text, int len)

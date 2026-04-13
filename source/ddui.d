@@ -46,6 +46,7 @@ enum MU_CONTAINERSTACK_SIZE = 32;
 enum MU_CLIPSTACK_SIZE = 32;
 enum MU_IDSTACK_SIZE = 32;
 enum MU_LAYOUTSTACK_SIZE = 16;
+enum MU_FOCUSSTACK_SIZE = 32;
 enum MU_CONTAINERPOOL_SIZE = 48;
 enum MU_TREENODEPOOL_SIZE = 48;
 enum MU_MAX_WIDTHS = 16;
@@ -163,7 +164,8 @@ enum
     MU_OPT_AUTOSIZE = (1 << 9),
     MU_OPT_POPUP = (1 << 10),
     MU_OPT_CLOSED = (1 << 11),
-    MU_OPT_EXPANDED = (1 << 12)
+    MU_OPT_EXPANDED = (1 << 12),
+    MU_OPT_TABSTOP = (1 << 13)
 }
 
 enum
@@ -179,7 +181,8 @@ enum
     MU_KEY_CTRL = (1 << 1),
     MU_KEY_ALT = (1 << 2),
     MU_KEY_BACKSPACE = (1 << 3),
-    MU_KEY_RETURN = (1 << 4)
+    MU_KEY_RETURN = (1 << 4),
+    MU_KEY_TAB = (1 << 5)
 }
 
 /// 2D vector point
@@ -347,6 +350,7 @@ struct mu_Context
     mu_Stack!(mu_Rect,       MU_CLIPSTACK_SIZE)      clip_stack;
     mu_Stack!(mu_Id,         MU_IDSTACK_SIZE)        id_stack;
     mu_Stack!(mu_Layout,     MU_LAYOUTSTACK_SIZE)    layout_stack;
+    mu_Stack!(mu_Id,         MU_FOCUSSTACK_SIZE)     focus_list;
     
     //
     // retained state pools
@@ -554,6 +558,7 @@ void mu_begin(mu_Context* ctx)
     assert(ctx.text_width && ctx.text_height, "ctx.text_width && ctx.text_height");
     ctx.command_list.idx = 0;
     ctx.root_list.idx = 0;
+    ctx.focus_list.idx = 0;
     ctx.scroll_target = null;
     ctx.hover_root = ctx.next_hover_root;
     ctx.next_hover_root = null;
@@ -584,12 +589,33 @@ void mu_end(mu_Context* ctx)
         ctx.scroll_target.scroll.y += ctx.scroll_delta.y;
     }
 
+    // handle tab navigation across registered tabstops
+    if (ctx.key_pressed & MU_KEY_TAB && ctx.focus_list.idx > 0)
+    {
+        size_t n = ctx.focus_list.idx;
+        int dir = (ctx.key_down & MU_KEY_SHIFT) ? -1 : 1;
+        size_t cur = n; // sentinel = "focus not in list"
+        for (size_t i = 0; i < n; i++)
+        {
+            if (ctx.focus_list.items[i] == ctx.focus)
+            {
+                cur = i;
+                break;
+            }
+        }
+        size_t next_idx = (cur == n)
+            ? (dir > 0 ? 0 : n - 1)
+            : cast(size_t)((cast(long)cur + dir + cast(long)n) % cast(long)n);
+        ctx.focus = ctx.focus_list.items[next_idx];
+        ctx.updated_focus = 1;
+    }
+
     // unset focus if focus id was not touched this frame
     if (!ctx.updated_focus)
     {
         ctx.focus = 0;
     }
-    
+
     ctx.updated_focus = 0;
 
     // bring hover root to front if mouse was pressed
@@ -1228,7 +1254,12 @@ void mu_update_control(mu_Context* ctx, mu_Id id, mu_Rect rect, int opt)
     {
         return;
     }
-    
+
+    if (opt & MU_OPT_TABSTOP && ctx.focus_list.idx < MU_FOCUSSTACK_SIZE)
+    {
+        ctx.focus_list.push(id);
+    }
+
     if (mouseover && !ctx.mouse_down)
     {
         ctx.hover = id;
@@ -1311,8 +1342,8 @@ int mu_button_ex(mu_Context* ctx, const(char)* label, int icon, int opt, int len
         mu_get_id(ctx, label, len) :
         mu_get_id(ctx, &icon, icon.sizeof);
     mu_Rect r = mu_layout_next(ctx);
-    mu_update_control(ctx, id, r, opt);
-    
+    mu_update_control(ctx, id, r, opt | MU_OPT_TABSTOP);
+
     // handle click
     if (ctx.mouse_pressed == MU_MOUSE_LEFT && ctx.focus == id)
     {
@@ -1340,7 +1371,7 @@ int mu_checkbox(mu_Context* ctx, const(char)* label, int* state, int len = -1)
     mu_Id id = mu_get_id(ctx, &state, state.sizeof); // sizeof(state), so pointer?
     mu_Rect r = mu_layout_next(ctx);
     mu_Rect box = mu_Rect(r.x, r.y, r.h, r.h);
-    mu_update_control(ctx, id, r, 0);
+    mu_update_control(ctx, id, r, MU_OPT_TABSTOP);
     
     // handle click
     if (ctx.mouse_pressed == MU_MOUSE_LEFT && ctx.focus == id)
@@ -1365,7 +1396,7 @@ int mu_textbox_raw(mu_Context* ctx, char* buf, int bufsz, mu_Id id, mu_Rect r,
     int opt, int length = -1)
 {
     int res = 0;
-    mu_update_control(ctx, id, r, opt | MU_OPT_HOLDFOCUS);
+    mu_update_control(ctx, id, r, opt | MU_OPT_HOLDFOCUS | MU_OPT_TABSTOP);
 
     size_t len = length < 0 ? strlen(buf) : cast(size_t) length;
 
@@ -1472,7 +1503,7 @@ int mu_slider_ex(mu_Context* ctx, mu_Real* value, mu_Real low, mu_Real high,
     }
 
     // handle normal mode
-    mu_update_control(ctx, id, base, opt);
+    mu_update_control(ctx, id, base, opt | MU_OPT_TABSTOP);
 
     // handle input
     if (ctx.focus == id &&
@@ -1557,7 +1588,7 @@ int mu_number_ex(mu_Context* ctx, mu_Real* value, mu_Real step,
     }
 
     // handle normal mode
-    mu_update_control(ctx, id, base, opt);
+    mu_update_control(ctx, id, base, opt | MU_OPT_TABSTOP);
 
     // handle input
     if (ctx.focus == id && ctx.mouse_down == MU_MOUSE_LEFT)
@@ -1585,7 +1616,7 @@ int mu_dropdown_ex(mu_Context* ctx, int* selected, const(char*)* items,
     int res;
     mu_Id id = mu_get_id(ctx, &selected, selected.sizeof);
     mu_Rect r = mu_layout_next(ctx);
-    mu_update_control(ctx, id, r, 0);
+    mu_update_control(ctx, id, r, MU_OPT_TABSTOP);
 
     // draw trigger
     mu_draw_control_frame(ctx, id, r, MU_COLOR_BUTTON, opt);

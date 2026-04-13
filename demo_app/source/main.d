@@ -455,6 +455,20 @@ void color_mixer_panel(mu_Context *ctx)
         mu_layout_row(ctx, 1, full.ptr, 0);
         mu_text(ctx, "Left-click: load into A. Right-click: load into B.");
     }
+
+    // Notes / labels — Tab/Shift+Tab to cycle through text inputs.
+    if (mu_header_ex(ctx, "Notes", MU_OPT_EXPANDED))
+    {
+        __gshared char[64] note_name  = "Sunset\0";
+        __gshared char[64] note_tags  = "warm, orange\0";
+        __gshared char[64] note_desc  = "\0";
+
+        static immutable int[2] cols = [ 60, -1 ];
+        mu_layout_row(ctx, 2, cols.ptr, 0);
+        mu_label(ctx, "Name:");  mu_textbox(ctx, note_name.ptr, note_name.sizeof);
+        mu_label(ctx, "Tags:");  mu_textbox(ctx, note_tags.ptr, note_tags.sizeof);
+        mu_label(ctx, "Desc:");  mu_textbox(ctx, note_desc.ptr, note_desc.sizeof);
+    }
 }
 
 // --- Calculator ---
