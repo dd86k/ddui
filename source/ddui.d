@@ -1271,7 +1271,7 @@ void mu_update_control(mu_Context* ctx, mu_Id id, mu_Rect rect, int opt)
         {
             mu_set_focus(ctx, 0);
         }
-        if (!ctx.mouse_down && ~opt & MU_OPT_HOLDFOCUS)
+        if (!ctx.mouse_down && ~opt & MU_OPT_HOLDFOCUS && ~opt & MU_OPT_TABSTOP)
         {
             mu_set_focus(ctx, 0);
         }
@@ -1349,7 +1349,12 @@ int mu_button_ex(mu_Context* ctx, const(char)* label, int icon, int opt, int len
     {
         res |= MU_RES_SUBMIT;
     }
-    
+    // handle keyboard activation
+    if (ctx.focus == id && ctx.key_pressed & MU_KEY_RETURN)
+    {
+        res |= MU_RES_SUBMIT;
+    }
+
     // draw
     mu_draw_control_frame(ctx, id, r, MU_COLOR_BUTTON, opt);
     if (label)
@@ -1375,6 +1380,12 @@ int mu_checkbox(mu_Context* ctx, const(char)* label, int* state, int len = -1)
     
     // handle click
     if (ctx.mouse_pressed == MU_MOUSE_LEFT && ctx.focus == id)
+    {
+        res |= MU_RES_CHANGE;
+        *state = !*state;
+    }
+    // handle keyboard activation
+    if (ctx.focus == id && ctx.key_pressed & MU_KEY_RETURN)
     {
         res |= MU_RES_CHANGE;
         *state = !*state;
@@ -1503,7 +1514,7 @@ int mu_slider_ex(mu_Context* ctx, mu_Real* value, mu_Real low, mu_Real high,
     }
 
     // handle normal mode
-    mu_update_control(ctx, id, base, opt | MU_OPT_TABSTOP);
+    mu_update_control(ctx, id, base, opt);
 
     // handle input
     if (ctx.focus == id &&
@@ -1588,7 +1599,7 @@ int mu_number_ex(mu_Context* ctx, mu_Real* value, mu_Real step,
     }
 
     // handle normal mode
-    mu_update_control(ctx, id, base, opt | MU_OPT_TABSTOP);
+    mu_update_control(ctx, id, base, opt);
 
     // handle input
     if (ctx.focus == id && ctx.mouse_down == MU_MOUSE_LEFT)
