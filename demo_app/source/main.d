@@ -277,9 +277,13 @@ void sidebar_panel(mu_Context *ctx)
         static immutable int[1] cols = [ -1 ];
         mu_layout_row(ctx, 1, cols.ptr, 0);
 
+        // Scope nav button ids so their labels don't collide with headers
+        // inside the content panels (e.g. "Color Mixer", "Calculator").
+        mu_push_id(ctx, "nav".ptr, 3);
         if (mu_button(ctx, "Color Mixer"))  { active_tab = Tab.color_mixer;   write_log("Opened Color Mixer"); }
         if (mu_button(ctx, "Calculator"))   { active_tab = Tab.calculator;    write_log("Opened Calculator"); }
         if (mu_button(ctx, "Style Editor")) { active_tab = Tab.style_editor;  write_log("Opened Style Editor"); }
+        mu_pop_id(ctx);
     }
 
     if (mu_header_ex(ctx, "Background", MU_OPT_EXPANDED))
@@ -711,6 +715,7 @@ immutable const(ubyte)[256] key_map = [
     SDLK_RETURN       & 0xff : MU_KEY_RETURN,
     SDLK_KP_ENTER     & 0xff : MU_KEY_RETURN,
     SDLK_BACKSPACE    & 0xff : MU_KEY_BACKSPACE,
+    SDLK_TAB          & 0xff : MU_KEY_TAB,
 ];
 
 int text_width(mu_Font font, const(char) *text, int len)
