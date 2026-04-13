@@ -12,17 +12,18 @@ Like the original, the library does not do any rendering of its own, but contain
 commands to draw text, shapes, and icons originating from the library that needs
 to be implemented in your application in order to work.
 
+It does not aim to be ABI or API compatible.
+
 # Features
 
 - BetterC compatibility.
+- Support for D strings in non-betterC settings.
 - Index-based command stack buffer.
 - Demo: Fixed host window resizing (clipping).
 
 # Roadmap
 
 - Embedded documentation.
-- Improve string handling.
-  - Maybe introduce string_t, at least reduce dependency on strlen.
 - Textbox input navigation.
 
 # Examples
