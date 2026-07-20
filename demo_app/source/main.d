@@ -195,7 +195,11 @@ void main(int argc, const(char) **args)
         stat_id       = uictx.id_stack.idx;
         sw_commands.start;
         r_clear(mu_Color(cast(ubyte)bg[0], cast(ubyte)bg[1], cast(ubyte)bg[2], 255));
-        foreach (ref mu_Command cmd ; mu_command_range(&uictx))
+        // follow JUMP commands so overlapping roots (popups, menus) are drawn
+        // in z-index order; a raw command_range would draw them in emission
+        // order and leave menus behind later content
+        mu_Command *cmd = null;
+        while (mu_get_next_command(&uictx, &cmd))
         {
             switch (cmd.type)
             {
@@ -245,6 +249,9 @@ void full_window(mu_Context *ctx)
         mu_Container *win = mu_get_current_container(ctx);
         win.rect = mu_Rect(0, 0, window_width, window_height);
 
+        // --- Top: menu bar ---
+        menu_bar(ctx);
+
         // Three-column layout: sidebar | content | console
         int[3] top_cols = [ 150, -250, -1 ];
         mu_layout_row(ctx, 3, top_cols.ptr, -1);
@@ -266,6 +273,63 @@ void full_window(mu_Context *ctx)
 
         mu_end_window(ctx);
     }
+}
+
+// --- Menu bar: cascading menus ---
+
+__gshared int menu_wrap = 1;
+
+void menu_bar(mu_Context *ctx)
+{
+    mu_begin_menubar(ctx);
+
+    if (mu_begin_menu(ctx, "File"))
+    {
+        if (mu_menu_item_ex(ctx, "New",  "Ctrl+N", 0, 0)) write_log("File > New");
+        if (mu_menu_item_ex(ctx, "Open", "Ctrl+O", 0, 0)) write_log("File > Open");
+
+        if (mu_begin_submenu(ctx, "Open Recent"))
+        {
+            if (mu_menu_item(ctx, "project.ddui")) write_log("Recent > project.ddui");
+            if (mu_menu_item(ctx, "notes.txt"))    write_log("Recent > notes.txt");
+
+            if (mu_begin_submenu(ctx, "Archived"))
+            {
+                if (mu_menu_item(ctx, "2024.zip")) write_log("Archived > 2024.zip");
+                if (mu_menu_item(ctx, "2025.zip")) write_log("Archived > 2025.zip");
+                mu_end_submenu(ctx);
+            }
+            mu_end_submenu(ctx);
+        }
+
+        mu_menu_separator(ctx);
+        if (mu_menu_item_ex(ctx, "Save", "Ctrl+S", 0, 0)) write_log("File > Save");
+        if (mu_menu_item_ex(ctx, "Quit", "Ctrl+Q", 0, 0)) write_log("File > Quit");
+        mu_end_menu(ctx);
+    }
+
+    if (mu_begin_menu(ctx, "Edit"))
+    {
+        if (mu_menu_item_ex(ctx, "Undo", "Ctrl+Z", 0, 0)) write_log("Edit > Undo");
+        if (mu_menu_item_ex(ctx, "Redo", "Ctrl+Y", 0, 0)) write_log("Edit > Redo");
+        mu_menu_separator(ctx);
+        // disabled entry
+        mu_menu_item_ex(ctx, "Paste", "Ctrl+V", 0, MU_OPT_NOINTERACT);
+        mu_end_menu(ctx);
+    }
+
+    if (mu_begin_menu(ctx, "View"))
+    {
+        if (mu_menu_item_ex(ctx, "Word Wrap",
+            menu_wrap ? "on" : "off", menu_wrap ? MU_ICON_CHECK : 0, 0))
+        {
+            menu_wrap = !menu_wrap;
+            write_log("Toggled Word Wrap");
+        }
+        mu_end_menu(ctx);
+    }
+
+    mu_end_menubar(ctx);
 }
 
 // --- Sidebar: navigation tree + background color ---

@@ -49,6 +49,7 @@ enum MU_LAYOUTSTACK_SIZE = 16;
 enum MU_FOCUSSTACK_SIZE = 32;
 enum MU_CONTAINERPOOL_SIZE = 48;
 enum MU_TREENODEPOOL_SIZE = 48;
+enum MU_MENUSTACK_SIZE = 8;
 enum MU_MAX_WIDTHS = 16;
 enum MU_MAX_FMT = 64;
 enum const(char)* MU_REAL_FMT = "%.3g";
@@ -308,6 +309,7 @@ struct mu_Style
     int title_height;
     int scrollbar_size;
     int thumb_size;
+    int menu_width;
     mu_Color[MU_COLOR_MAX] colors;
 }
 
@@ -339,7 +341,25 @@ struct mu_Context
     mu_Container* scroll_target;
     char[MU_MAX_FMT] number_edit_buf;
     mu_Id number_edit;
-    
+
+    //
+    // menu state
+    //
+
+    /// currently open menu chain (controller ids), root first. Persists between frames.
+    mu_Id[MU_MENUSTACK_SIZE] menu_stack;
+    /// number of open levels in `menu_stack`
+    int menu_stack_len;
+    /// per-frame: nesting depth while emitting menu content
+    int menu_depth;
+    /// per-frame: set when a mouse press was consumed by the menu system
+    int menu_consumed;
+    /// per-frame: menubar horizontal cursor and geometry
+    int menubar_x;
+    int menubar_y;
+    int menubar_h;
+    int in_menubar;
+
     //
     // stacks
     //
@@ -463,6 +483,8 @@ __gshared mu_Style default_style = {
     12,
     // Thumb size
     8,
+    // Menu popup width
+    160,
     [
         // MU_COLOR_TEXT
         { 230, 230, 230, 255 },
@@ -553,6 +575,28 @@ void mu_init(mu_Context* ctx, mu_Style *style = null)
     ctx.style = style ? style : cast(mu_Style*)&default_style;
 }
 
+/// Allocates a context on the heap and initializes it. Prefer this over placing
+/// a `mu_Context` on the stack: the fixed command/text buffers make the struct
+/// several megabytes, which overflows the default thread stack on some targets
+/// (notably MSVC). Free the result with `mu_destroy`.
+/// Returns: The new context, or null if the allocation failed.
+mu_Context* mu_create(mu_Style *style = null)
+{
+    mu_Context* ctx = cast(mu_Context*) malloc(mu_Context.sizeof);
+    if (ctx == null)
+    {
+        return null;
+    }
+    mu_init(ctx, style);
+    return ctx;
+}
+
+/// Frees a context allocated with `mu_create`. Passing null is a no-op.
+void mu_destroy(mu_Context* ctx)
+{
+    free(ctx);
+}
+
 void mu_begin(mu_Context* ctx)
 {
     assert(ctx.text_width && ctx.text_height, "ctx.text_width && ctx.text_height");
@@ -564,6 +608,9 @@ void mu_begin(mu_Context* ctx)
     ctx.next_hover_root = null;
     ctx.mouse_delta.x = ctx.mouse_pos.x - ctx.last_mouse_pos.x;
     ctx.mouse_delta.y = ctx.mouse_pos.y - ctx.last_mouse_pos.y;
+    ctx.menu_depth = 0;
+    ctx.menu_consumed = 0;
+    ctx.in_menubar = 0;
     ctx.frame++;
 }
 
@@ -624,6 +671,12 @@ void mu_end(mu_Context* ctx)
         ctx.next_hover_root.zindex)
     {
         mu_bring_to_front(ctx, ctx.next_hover_root);
+    }
+
+    // close any open menu chain when a press landed outside the menu system
+    if (ctx.mouse_pressed && ctx.menu_consumed == false)
+    {
+        ctx.menu_stack_len = 0;
     }
 
     // reset input state
@@ -1837,6 +1890,295 @@ void mu_push_container_body(mu_Context* ctx, mu_Container* cnt, mu_Rect body_, i
     cnt.body_ = body_;
 }
 
+//
+// menubar ABI
+//
+
+/// Begins a horizontal menu bar, reserving a full-width row in the current
+/// layout. Place `mu_begin_menu` titles between this and `mu_end_menubar`.
+void mu_begin_menubar(mu_Context* ctx)
+{
+    int fill = -1;
+    int h = ctx.style.size.y + ctx.style.padding * 2;
+    mu_layout_row(ctx, 1, &fill, h);
+    mu_Rect bar = mu_layout_next(ctx);
+    ctx.mu_draw_frame(ctx, bar, MU_COLOR_TITLEBG);
+    ctx.menubar_x = bar.x;
+    ctx.menubar_y = bar.y;
+    ctx.menubar_h = bar.h;
+    ctx.in_menubar = 1;
+}
+
+/// Ends the menu bar started by `mu_begin_menubar`.
+void mu_end_menubar(mu_Context* ctx)
+{
+    ctx.in_menubar = 0;
+}
+
+// Shared implementation for top-level menus (`in_bar`) and submenus.
+// Returns MU_RES_ACTIVE while the menu is open; the caller must then emit menu
+// content and call the matching end function.
+private
+int mu_menu_begin(mu_Context* ctx, const(char)* label, int len, int in_bar)
+{
+    if (len < 0) len = cast(int) strlen(label);
+    mu_Font font = ctx.style.font;
+    int depth = ctx.menu_depth;
+    mu_Id id = mu_get_id(ctx, label, len);
+    mu_Rect r;
+
+    if (in_bar)
+    {
+        // pack titles left-to-right, each sized to its text
+        int tw = ctx.text_width(font, label, len);
+        r = mu_Rect(ctx.menubar_x, ctx.menubar_y, tw + ctx.style.padding * 2, ctx.menubar_h);
+        ctx.menubar_x += r.w;
+    }
+    else
+    {
+        // full-width row inside the parent menu
+        int fill = -1;
+        mu_layout_row(ctx, 1, &fill, 0);
+        r = mu_layout_next(ctx);
+    }
+
+    mu_update_control(ctx, id, r, 0);
+
+    int open = (ctx.menu_stack_len > depth && ctx.menu_stack[depth] == id);
+
+    if (in_bar)
+    {
+        // click toggles this menu; hovering another title switches while open
+        if (ctx.mouse_pressed == MU_MOUSE_LEFT && ctx.focus == id)
+        {
+            ctx.menu_consumed = 1;
+            if (open)
+            {
+                ctx.menu_stack_len = 0;
+                open = 0;
+            }
+            else
+            {
+                ctx.menu_stack[0] = id;
+                ctx.menu_stack_len = 1;
+                open = 1;
+            }
+        }
+        else if (ctx.menu_stack_len > 0 && ctx.hover == id && open == false)
+        {
+            // switch top-level menu; applied next frame to avoid overlap
+            ctx.menu_stack[0] = id;
+            ctx.menu_stack_len = 1;
+        }
+    }
+    else
+    {
+        // a press on a submenu title keeps the chain open
+        if (ctx.mouse_pressed == MU_MOUSE_LEFT && ctx.focus == id)
+        {
+            ctx.menu_consumed = 1;
+        }
+        if (ctx.hover == id)
+        {
+            if (ctx.menu_stack_len > depth)
+            {
+                if (ctx.menu_stack[depth] == id)
+                {
+                    open = 1;
+                }
+                else
+                {
+                    // switch from a sibling submenu; applied next frame
+                    ctx.menu_stack[depth] = id;
+                    ctx.menu_stack_len = depth + 1;
+                }
+            }
+            else
+            {
+                // nothing open at this depth yet: open immediately
+                ctx.menu_stack[depth] = id;
+                ctx.menu_stack_len = depth + 1;
+                open = 1;
+            }
+        }
+    }
+
+    // draw the title / item
+    if (open || ctx.hover == id || ctx.focus == id)
+    {
+        ctx.mu_draw_frame(ctx, r, MU_COLOR_BUTTONHOVER);
+    }
+    if (in_bar)
+    {
+        mu_draw_control_text(ctx, label, r, MU_COLOR_TEXT, MU_OPT_ALIGNCENTER, len);
+    }
+    else
+    {
+        mu_Rect textr = mu_Rect(r.x, r.y, r.w - r.h, r.h);
+        mu_draw_control_text(ctx, label, textr, MU_COLOR_TEXT, 0, len);
+        // right-pointing arrow marks a submenu
+        mu_draw_icon(ctx, MU_ICON_COLLAPSED,
+            mu_Rect(r.x + r.w - r.h, r.y, r.h, r.h),
+            ctx.style.colors[MU_COLOR_TEXT]);
+    }
+
+    if (open == false)
+    {
+        return 0;
+    }
+
+    // open the popup container, scoped uniquely to this controller id
+    mu_push_id(ctx, &id, id.sizeof);
+    mu_Container* cnt = mu_get_container(ctx, cast(const(char)*) "!menu", 5);
+    // update position and width every frame, but preserve the height computed by
+    // MU_OPT_AUTOSIZE: mu_begin_root_container's hover test runs before autosize,
+    // so forcing a fixed height here would break item hovering
+    if (in_bar)
+    {
+        // drop down below the title
+        cnt.rect.x = r.x;
+        cnt.rect.y = r.y + r.h;
+    }
+    else
+    {
+        // cascade out to the right of the item, clear of the parent frame
+        cnt.rect.x = r.x + r.w + ctx.style.padding;
+        cnt.rect.y = r.y;
+    }
+    cnt.rect.w = ctx.style.menu_width;
+    cnt.open = 1;
+    mu_bring_to_front(ctx, cnt);
+
+    enum int MENU_OPT = MU_OPT_AUTOSIZE | MU_OPT_NORESIZE |
+        MU_OPT_NOSCROLL | MU_OPT_NOTITLE | MU_OPT_CLOSED;
+    if (mu_begin_window_ex(ctx, cast(const(char)*) "!menu", cnt.rect, MENU_OPT, 5) == 0)
+    {
+        mu_pop_id(ctx);
+        return 0;
+    }
+
+    // a press on empty popup space keeps the chain open
+    if (ctx.mouse_pressed && ctx.hover_root == cnt)
+    {
+        ctx.menu_consumed = 1;
+    }
+
+    ctx.menu_depth = depth + 1;
+    return MU_RES_ACTIVE;
+}
+
+// Called by mu_end_menu and mu_end_submenu
+private
+void mu_menu_end(mu_Context* ctx)
+{
+    ctx.menu_depth--;
+    mu_end_window(ctx);
+    mu_pop_id(ctx);
+}
+
+/// Begins a top-level menu in the menu bar. Returns nonzero while the menu is
+/// open; emit items/submenus and finish with `mu_end_menu`.
+int mu_begin_menu(mu_Context* ctx, const(char)* label, int len = -1)
+{
+    return mu_menu_begin(ctx, label, len, 1);
+}
+
+/// Ends the menu started by `mu_begin_menu`.
+void mu_end_menu(mu_Context* ctx)
+{
+    mu_menu_end(ctx);
+}
+
+/// Begins a nested submenu inside an open menu. Same contract as `mu_begin_menu`.
+int mu_begin_submenu(mu_Context* ctx, const(char)* label, int len = -1)
+{
+    return mu_menu_begin(ctx, label, len, 0);
+}
+
+/// Ends the submenu started by `mu_begin_submenu`.
+void mu_end_submenu(mu_Context* ctx)
+{
+    mu_menu_end(ctx);
+}
+
+/// A clickable menu entry with an optional right-aligned shortcut label and
+/// leading icon. Pass `MU_OPT_NOINTERACT` in `opt` to disable it. Returns
+/// `MU_RES_SUBMIT` when activated by mouse or the return key.
+int mu_menu_item_ex(mu_Context* ctx, const(char)* label,
+    const(char)* shortcut, int icon, int opt, int len = -1)
+{
+    if (len < 0 && label) len = cast(int) strlen(label);
+    int depth = ctx.menu_depth;
+    int res = 0;
+    mu_Id id = label ?
+        mu_get_id(ctx, label, len) :
+        mu_get_id(ctx, &icon, icon.sizeof);
+    int fill = -1;
+    mu_layout_row(ctx, 1, &fill, 0);
+    mu_Rect r = mu_layout_next(ctx);
+    mu_update_control(ctx, id, r, opt);
+
+    // moving onto a plain item collapses any submenu opened from this menu
+    if (ctx.hover == id && ctx.menu_stack_len > depth)
+    {
+        ctx.menu_stack_len = depth;
+    }
+
+    // handle activation
+    if (ctx.mouse_pressed == MU_MOUSE_LEFT && ctx.focus == id)
+    {
+        res |= MU_RES_SUBMIT;
+    }
+    if (ctx.focus == id && ctx.key_pressed & MU_KEY_RETURN)
+    {
+        res |= MU_RES_SUBMIT;
+    }
+    if (res & MU_RES_SUBMIT)
+    {
+        ctx.menu_consumed = 1;
+        ctx.menu_stack_len = 0;   // activating an item closes the whole chain
+    }
+
+    // draw
+    if (ctx.hover == id || ctx.focus == id)
+    {
+        ctx.mu_draw_frame(ctx, r, MU_COLOR_BUTTONHOVER);
+    }
+    mu_Rect textr = r;
+    if (icon)
+    {
+        mu_draw_icon(ctx, icon, mu_Rect(r.x, r.y, r.h, r.h),
+            ctx.style.colors[MU_COLOR_TEXT]);
+        textr.x += r.h;
+        textr.w -= r.h;
+    }
+    if (label)
+    {
+        mu_draw_control_text(ctx, label, textr, MU_COLOR_TEXT, opt, len);
+    }
+    if (shortcut)
+    {
+        mu_draw_control_text(ctx, shortcut, r, MU_COLOR_TITLETEXT, MU_OPT_ALIGNRIGHT);
+    }
+    return res;
+}
+
+/// A plain clickable menu entry. Returns `MU_RES_SUBMIT` when activated.
+int mu_menu_item(mu_Context* ctx, const(char)* label, int len = -1)
+{
+    return mu_menu_item_ex(ctx, label, null, 0, 0, len);
+}
+
+/// Draws a horizontal separator line across the current menu.
+void mu_menu_separator(mu_Context* ctx)
+{
+    int fill = -1;
+    mu_layout_row(ctx, 1, &fill, ctx.style.padding * 2);
+    mu_Rect r = mu_layout_next(ctx);
+    mu_draw_rect(ctx, mu_Rect(r.x, r.y + r.h / 2, r.w, 1),
+        ctx.style.colors[MU_COLOR_BORDER]);
+}
+
 void mu_begin_root_container(mu_Context* ctx, mu_Container* cnt)
 {
     ctx.container_stack.push(cnt);
@@ -2108,6 +2450,27 @@ else
     int mu_begin_popup(mu_Context* ctx, string name)
     {
         return mu_begin_popup(ctx, sptr(name), slen(name));
+    }
+
+    int mu_begin_menu(mu_Context* ctx, string label)
+    {
+        return mu_begin_menu(ctx, sptr(label), slen(label));
+    }
+
+    int mu_begin_submenu(mu_Context* ctx, string label)
+    {
+        return mu_begin_submenu(ctx, sptr(label), slen(label));
+    }
+
+    int mu_menu_item(mu_Context* ctx, string label)
+    {
+        return mu_menu_item(ctx, sptr(label), slen(label));
+    }
+
+    int mu_menu_item_ex(mu_Context* ctx, string label, string shortcut, int icon, int opt)
+    {
+        return mu_menu_item_ex(ctx, sptr(label), shortcut.length ? sptr(shortcut) : null,
+            icon, opt, slen(label));
     }
 
     void mu_input_text(mu_Context* ctx, string text)
