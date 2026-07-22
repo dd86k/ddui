@@ -35,9 +35,13 @@ extern (C):
 
 enum MU_VERSION = "0.1.0";
 
-/// Buffer size for text command.
+/// Maximum length (in bytes) of the string carried by a single text command.
 /// This affects all labels and text inputs.
 enum MU_TEXTSTACK_SIZE = 1024;
+/// Total per-frame arena (in bytes) shared by all text command strings.
+/// Text commands store an offset into this pool instead of an inline copy,
+/// keeping mu_Command small. Sized well above the demo's needs.
+enum MU_TEXTPOOL_SIZE = 256 * 1024;
 /// Maximum number of commands that the UI can generate.
 /// Demo uses around 497 commands.
 enum MU_COMMANDLIST_SIZE = 4096;
@@ -281,7 +285,11 @@ struct mu_TextCommand
     mu_Font font;
     mu_Vec2 pos;
     mu_Color color;
-    char[MU_TEXTSTACK_SIZE] str;
+    /// Byte offset of the string within `mu_Context.text_stack`.
+    /// Resolve to a pointer with `mu_command_text`.
+    int str_index;
+    /// String length in bytes, excluding the nul terminator.
+    int str_len;
 }
 
 ///
@@ -400,6 +408,7 @@ struct mu_Context
     //
     
     mu_Stack!(mu_Command,    MU_COMMANDLIST_SIZE)    command_list;
+    mu_Stack!(char,          MU_TEXTPOOL_SIZE)       text_stack;
     mu_Stack!(mu_Container*, MU_ROOTLIST_SIZE)       root_list;
     mu_Stack!(mu_Container*, MU_CONTAINERSTACK_SIZE) container_stack;
     mu_Stack!(mu_Rect,       MU_CLIPSTACK_SIZE)      clip_stack;
@@ -636,6 +645,7 @@ void mu_begin(mu_Context* ctx)
 {
     assert(ctx.text_width && ctx.text_height, "ctx.text_width && ctx.text_height");
     ctx.command_list.idx = 0;
+    ctx.text_stack.idx = 0;
     ctx.root_list.idx = 0;
     ctx.focus_list.idx = 0;
     ctx.scroll_target = null;
@@ -1111,6 +1121,11 @@ void mu_draw_box(mu_Context* ctx, mu_Rect rect, mu_Color color)
 void mu_draw_text(mu_Context* ctx, mu_Font font, const(char)* str, int len,
     mu_Vec2 pos, mu_Color color)
 {
+    if (len < 0)
+    {
+        len = cast(int)strlen(str);
+    }
+
     mu_Rect rect = mu_Rect(pos.x, pos.y, ctx.text_width(font, str, len), ctx.text_height(font));
     int clipped = mu_check_clip(ctx, rect);
     if (clipped == MU_CLIP_ALL)
@@ -1121,16 +1136,23 @@ void mu_draw_text(mu_Context* ctx, mu_Font font, const(char)* str, int len,
     {
         mu_set_clip(ctx, mu_get_clip_rect(ctx));
     }
-    
+
+    // copy the string into the shared text arena; the command only keeps an
+    // offset into it. bound the copy to the per-command cap and remaining pool
+    // space (trimmed to a utf-8 boundary) so we never overrun or split a char.
+    size_t space = ctx.text_stack.items.length - ctx.text_stack.idx;
+    size_t cap = space > 0 ? mu_min(space - 1, cast(size_t) MU_TEXTSTACK_SIZE - 1) : 0;
+    size_t n = mu_utf8_trim(str, mu_min(cast(size_t) len, cap));
+
+    int idx = cast(int) ctx.text_stack.idx;
+    memcpy(ctx.text_stack.items.ptr + idx, str, n);
+    ctx.text_stack.items[idx + n] = '\0';
+    ctx.text_stack.idx += n + 1;
+
     // add command
-    if (len < 0)
-    {
-        len = cast(int)strlen(str);
-    }
-    
-    mu_Command* cmd = mu_push_command(ctx, MU_COMMAND_TEXT/*, cast(int)(mu_TextCommand.sizeof + len)*/);
-    memcpy(cmd.text.str.ptr, str, len);
-    cmd.text.str[len] = '\0';
+    mu_Command* cmd = mu_push_command(ctx, MU_COMMAND_TEXT);
+    cmd.text.str_index = idx;
+    cmd.text.str_len = cast(int) n;
     cmd.text.pos = pos;
     cmd.text.color = color;
     cmd.text.font = font;
@@ -1140,6 +1162,70 @@ void mu_draw_text(mu_Context* ctx, mu_Font font, const(char)* str, int len,
     {
         mu_set_clip(ctx, unclipped_rect);
     }
+}
+
+/// Resolves the nul-terminated string of a text command.
+///
+/// Text command strings live in the context's per-frame arena rather than
+/// inside the command, so a renderer consuming the command list calls this to
+/// obtain the pointer. Valid until the next mu_begin.
+/// Params:
+///   ctx = ddui context that produced the command.
+///   cmd = A command of type MU_COMMAND_TEXT.
+/// Returns: Pointer to the nul-terminated string.
+const(char)* mu_command_text(mu_Context* ctx, const(mu_Command)* cmd)
+{
+    return ctx.text_stack.items.ptr + cmd.text.str_index;
+}
+
+/// D-slice variant of mu_command_text.
+///
+/// Returns the command's string as a slice: no nul terminator needed since the
+/// length is carried, and no strlen scan. The element type is `const(char)`
+/// rather than `immutable` because the arena is reused each frame; the slice is
+/// valid until the next mu_begin. Available in BetterC (a slice is just ptr+len).
+/// Params:
+///   ctx = ddui context that produced the command.
+///   cmd = A command of type MU_COMMAND_TEXT.
+/// Returns: The string as a `const(char)[]` slice.
+extern(D) const(char)[] mu_command_text_slice(mu_Context* ctx, const(mu_Command)* cmd)
+{
+    return ctx.text_stack.items.ptr[cmd.text.str_index .. cmd.text.str_index + cmd.text.str_len];
+}
+
+unittest
+{
+    import core.stdc.string : strcmp;
+
+    extern(C) static int fake_width(mu_Font, const(char)*, int len) { return len < 0 ? 0 : len * 8; }
+    extern(C) static int fake_height(mu_Font) { return 16; }
+
+    // mu_Context is multiple MB: heap-allocate. text_width/height must be set
+    // and a clip rect pushed, both of which mu_begin normally handles.
+    mu_Context* ctx = new mu_Context;
+    ctx.text_width = &fake_width;
+    ctx.text_height = &fake_height;
+    ctx.clip_stack.push(unclipped_rect); // everything visible
+
+    mu_draw_text(ctx, null, "hi", -1, mu_Vec2(0, 0), mu_Color(0, 0, 0, 0));
+    mu_draw_text(ctx, null, "world", 5, mu_Vec2(0, 0), mu_Color(0, 0, 0, 0));
+
+    assert(ctx.command_list.idx == 2);
+    const(mu_Command)* c0 = &ctx.command_list.items[0];
+    const(mu_Command)* c1 = &ctx.command_list.items[1];
+
+    // strings round-trip out of the shared arena, nul-terminated
+    assert(c0.type == MU_COMMAND_TEXT);
+    assert(strcmp(mu_command_text(ctx, c0), "hi") == 0);
+    assert(strcmp(mu_command_text(ctx, c1), "world") == 0);
+    assert(c0.text.str_len == 2 && c1.text.str_len == 5);
+
+    // the slice variant carries its own length (no nul needed)
+    assert(mu_command_text_slice(ctx, c0) == "hi");
+    assert(mu_command_text_slice(ctx, c1) == "world");
+
+    // packed back to back: second starts after first + its nul terminator
+    assert(c1.text.str_index == c0.text.str_index + 3);
 }
 
 void mu_draw_icon(mu_Context* ctx, int id, mu_Rect rect, mu_Color color)

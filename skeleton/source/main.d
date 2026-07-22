@@ -120,7 +120,7 @@ void main()
         {
             switch (cmd.type)
             {
-                case MU_COMMAND_TEXT: r_draw_text(cmd.text.str.ptr, cmd.text.pos, cmd.text.color); break;
+                case MU_COMMAND_TEXT: r_draw_text(mu_command_text(&uictx, cmd), cmd.text.pos, cmd.text.color); break;
                 case MU_COMMAND_RECT: r_draw_rect(cmd.rect.rect, cmd.rect.color); break;
                 case MU_COMMAND_ICON: r_draw_icon(cmd.icon.id, cmd.icon.rect, cmd.icon.color); break;
                 case MU_COMMAND_CLIP: r_set_clip_rect(cmd.clip.rect); break;
