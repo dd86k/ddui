@@ -947,10 +947,13 @@ void mu_input_text(mu_Context* ctx, const(char)* text, int tlen = -1)
 {
     if (tlen < 0) tlen = cast(int) strlen(text);
     size_t len = strlen(ctx.input_text.ptr);
-    assert(len + tlen + 1 <= ctx.input_text.sizeof,
-        "len + tlen + 1 <= ctx.input_text.sizeof");
-    memcpy(ctx.input_text.ptr + len, text, tlen);
-    ctx.input_text[len + tlen] = '\0';
+    // clamp to remaining space, then back off to a utf-8 codepoint boundary
+    // so a truncated chunk never leaves a partial sequence in the buffer
+    size_t n = mu_min(cast(size_t) tlen, ctx.input_text.sizeof - len - 1);
+    while (n > 0 && (text[n] & 0xc0) == 0x80)
+        --n;
+    memcpy(ctx.input_text.ptr + len, text, n);
+    ctx.input_text[len + n] = '\0';
 }
 
 /*============================================================================
@@ -1469,6 +1472,10 @@ int mu_textbox_raw(mu_Context* ctx, char* buf, int bufsz, mu_Id id, mu_Rect r,
     {
         // handle text input
         size_t n = mu_min(bufsz - len - 1, strlen(ctx.input_text.ptr));
+        // if the buffer clamp cut a utf-8 sequence in half, back off to a
+        // codepoint boundary so we never store a partial sequence
+        while (n > 0 && (ctx.input_text[n] & 0xc0) == 0x80)
+            --n;
         if (n > 0)
         {
             memcpy(buf + len, ctx.input_text.ptr, n);
