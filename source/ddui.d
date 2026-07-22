@@ -95,6 +95,40 @@ auto mu_clamp(X, A, B)(X x, A a, B b)
     return mu_min(b, mu_max(a, x));
 }
 
+/// Trims a byte count down to a UTF-8 codepoint boundary.
+///
+/// Given a length `n` into `text`, returns the largest `n' <= n` such that
+/// `text[n']` is not a continuation byte (0x80..0xBF). Copying `text[0 .. n']`
+/// therefore never leaves a partial sequence behind.
+/// Params:
+///   text = UTF-8 buffer.
+///   n = Byte count to trim.
+/// Returns: Byte count on a codepoint boundary.
+size_t mu_utf8_trim(const(char)* text, size_t n)
+{
+    while (n > 0 && (text[n] & 0xc0) == 0x80)
+        --n;
+    return n;
+}
+
+unittest
+{
+    // "aé€" = 61 | C3 A9 | E2 82 AC  (1 + 2 + 3 bytes)
+    static immutable char[] s = ['a', '\xC3', '\xA9', '\xE2', '\x82', '\xAC', '\0'];
+    const(char)* p = s.ptr;
+
+    // boundaries (lead byte or end) pass through untouched
+    assert(mu_utf8_trim(p, 0) == 0); // start
+    assert(mu_utf8_trim(p, 1) == 1); // after 'a'
+    assert(mu_utf8_trim(p, 3) == 3); // after 'é'
+    assert(mu_utf8_trim(p, 6) == 6); // after '€' (the nul terminator)
+
+    // cuts inside a sequence back off to its start
+    assert(mu_utf8_trim(p, 2) == 1); // mid 'é' -> after 'a'
+    assert(mu_utf8_trim(p, 4) == 3); // 1 byte into '€' -> after 'é'
+    assert(mu_utf8_trim(p, 5) == 3); // 2 bytes into '€' -> after 'é'
+}
+
 alias mu_Id = uint;
 alias mu_Real = float;
 alias mu_Font = void*;
@@ -949,11 +983,38 @@ void mu_input_text(mu_Context* ctx, const(char)* text, int tlen = -1)
     size_t len = strlen(ctx.input_text.ptr);
     // clamp to remaining space, then back off to a utf-8 codepoint boundary
     // so a truncated chunk never leaves a partial sequence in the buffer
-    size_t n = mu_min(cast(size_t) tlen, ctx.input_text.sizeof - len - 1);
-    while (n > 0 && (text[n] & 0xc0) == 0x80)
-        --n;
+    size_t n = mu_utf8_trim(text, mu_min(cast(size_t) tlen, ctx.input_text.sizeof - len - 1));
     memcpy(ctx.input_text.ptr + len, text, n);
     ctx.input_text[len + n] = '\0';
+}
+unittest
+{
+    import core.stdc.string : strlen, strcmp;
+
+    // mu_Context is multiple MB, so heap-allocate rather than blow the stack.
+    // char.init is 0xFF and mu_begin isn't run here, so the input buffer must
+    // be nul-terminated by hand before strlen touches it.
+    mu_Context* ctx = new mu_Context;
+
+    // ASCII appends accumulate
+    ctx.input_text[0] = '\0';
+    mu_input_text(ctx, "abc");
+    mu_input_text(ctx, "de");
+    assert(strcmp(ctx.input_text.ptr, "abcde") == 0);
+
+    // a multi-byte char that fits is stored whole
+    ctx.input_text[0] = '\0';
+    mu_input_text(ctx, "\xC3\xA9"); // "é"
+    assert(strlen(ctx.input_text.ptr) == 2);
+
+    // when only 1 byte of space is left, a 2-byte char is dropped, not split
+    enum size_t fill = MU_TEXT_LEN - 2; // leaves room for 1 byte + nul
+    ctx.input_text[0 .. fill] = 'x';
+    ctx.input_text[fill] = '\0';
+    mu_input_text(ctx, "\xC3\xA9");
+    assert(strlen(ctx.input_text.ptr) == fill); // nothing appended
+    foreach (char c; ctx.input_text[0 .. fill])
+        assert(c == 'x'); // no stray partial byte
 }
 
 /*============================================================================
@@ -1471,11 +1532,10 @@ int mu_textbox_raw(mu_Context* ctx, char* buf, int bufsz, mu_Id id, mu_Rect r,
     if (ctx.focus == id)
     {
         // handle text input
-        size_t n = mu_min(bufsz - len - 1, strlen(ctx.input_text.ptr));
-        // if the buffer clamp cut a utf-8 sequence in half, back off to a
-        // codepoint boundary so we never store a partial sequence
-        while (n > 0 && (ctx.input_text[n] & 0xc0) == 0x80)
-            --n;
+        // clamp to remaining space, then back off to a codepoint boundary so
+        // a truncated chunk never leaves a partial utf-8 sequence behind
+        size_t n = mu_utf8_trim(ctx.input_text.ptr,
+            mu_min(bufsz - len - 1, strlen(ctx.input_text.ptr)));
         if (n > 0)
         {
             memcpy(buf + len, ctx.input_text.ptr, n);
