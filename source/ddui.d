@@ -166,7 +166,8 @@ enum
     MU_OPT_POPUP = (1 << 10),
     MU_OPT_CLOSED = (1 << 11),
     MU_OPT_EXPANDED = (1 << 12),
-    MU_OPT_TABSTOP = (1 << 13)
+    MU_OPT_TABSTOP = (1 << 13),
+    MU_OPT_PASSWORD = (1 << 14),
 }
 
 enum
@@ -1493,25 +1494,36 @@ int mu_textbox_raw(mu_Context* ctx, char* buf, int bufsz, mu_Id id, mu_Rect r,
         }
     }
 
+    // mask the displayed text for password fields, without touching buf itself
+    char[128] mask_buf = void;
+    const(char)* draw_buf = buf;
+    size_t draw_len = len;
+    if (opt & MU_OPT_PASSWORD)
+    {
+        draw_len = mu_min(len, mask_buf.sizeof);
+        memset(mask_buf.ptr, '*', draw_len);
+        draw_buf = mask_buf.ptr;
+    }
+
     // draw
     mu_draw_control_frame(ctx, id, r, MU_COLOR_BASE, opt);
     if (ctx.focus == id)
     {
         mu_Color color = ctx.style.colors[MU_COLOR_TEXT];
         mu_Font font = ctx.style.font;
-        int textw = ctx.text_width(font, buf, cast(int) len);
+        int textw = ctx.text_width(font, draw_buf, cast(int) draw_len);
         int texth = ctx.text_height(font);
         int ofx = r.w - ctx.style.padding - textw - 1;
         int textx = r.x + mu_min(ofx, ctx.style.padding);
         int texty = r.y + (r.h - texth) / 2;
         mu_push_clip_rect(ctx, r);
-        mu_draw_text(ctx, font, buf, cast(int) len, mu_Vec2(textx, texty), color);
+        mu_draw_text(ctx, font, draw_buf, cast(int) draw_len, mu_Vec2(textx, texty), color);
         mu_draw_rect(ctx, mu_Rect(textx + textw, texty, 1, texth), color);
         mu_pop_clip_rect(ctx);
     }
     else
     {
-        mu_draw_control_text(ctx, buf, r, MU_COLOR_TEXT, opt, cast(int) len);
+        mu_draw_control_text(ctx, draw_buf, r, MU_COLOR_TEXT, opt, cast(int) draw_len);
     }
 
     return res;
