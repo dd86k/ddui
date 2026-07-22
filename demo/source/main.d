@@ -411,7 +411,7 @@ int uint8_slider(mu_Context *ctx, ubyte *value, int low, int high)
 {
     mu_push_id(ctx, &value, value.sizeof);
     float tmp = *value;
-    int res = mu_slider_ex(ctx, &tmp, low, high, 0, "%.0f", MU_OPT_ALIGNCENTER);
+    int res = mu_slider_ex(ctx, &tmp, cast(float)low, cast(float)high, 0f, "%.0f", MU_OPT_ALIGNCENTER);
     *value = cast(ubyte)tmp;
     mu_pop_id(ctx);
     return res;

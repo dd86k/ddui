@@ -2526,150 +2526,186 @@ void mu_end_panel(mu_Context* ctx)
 //
 // D string overloads
 //
+// These are extern(D) and allocation-free: they just forward a pointer and a
+// length to the C API, so they are available in BetterC too.
 
-version (D_BetterC) {}
-else
+extern (D):
+
+private int slen(string s) { return cast(int) s.length; }
+private const(char)* sptr(string s) { return s.length ? s.ptr : "".ptr; }
+
+int mu_button(mu_Context* ctx, string label)
 {
-    import std.string : toStringz;
+    return mu_button_ex(ctx, sptr(label), 0, MU_OPT_ALIGNCENTER, slen(label));
+}
 
-    extern (D):
+int mu_button_ex(mu_Context* ctx, string label, int icon, int opt)
+{
+    return mu_button_ex(ctx, sptr(label), icon, opt, slen(label));
+}
 
-    private int slen(string s) { return cast(int) s.length; }
-    private const(char)* sptr(string s) { return s.length ? s.ptr : "".ptr; }
+int mu_checkbox(mu_Context* ctx, string label, int* state)
+{
+    return mu_checkbox(ctx, sptr(label), state, slen(label));
+}
 
-    int mu_button(mu_Context* ctx, string label)
-    {
-        return mu_button_ex(ctx, sptr(label), 0, MU_OPT_ALIGNCENTER, slen(label));
-    }
+void mu_text(mu_Context* ctx, string text)
+{
+    mu_text(ctx, sptr(text), slen(text));
+}
 
-    int mu_button_ex(mu_Context* ctx, string label, int icon, int opt)
-    {
-        return mu_button_ex(ctx, sptr(label), icon, opt, slen(label));
-    }
+void mu_label(mu_Context* ctx, string text)
+{
+    mu_label(ctx, sptr(text), slen(text));
+}
 
-    int mu_checkbox(mu_Context* ctx, string label, int* state)
-    {
-        return mu_checkbox(ctx, sptr(label), state, slen(label));
-    }
+int mu_header(mu_Context* ctx, string label)
+{
+    return mu_header_ex(ctx, sptr(label), 0, slen(label));
+}
 
-    void mu_text(mu_Context* ctx, string text)
-    {
-        mu_text(ctx, sptr(text), slen(text));
-    }
+int mu_header_ex(mu_Context* ctx, string label, int opt)
+{
+    return mu_header_ex(ctx, sptr(label), opt, slen(label));
+}
 
-    void mu_label(mu_Context* ctx, string text)
-    {
-        mu_label(ctx, sptr(text), slen(text));
-    }
+int mu_begin_treenode(mu_Context* ctx, string label)
+{
+    return mu_begin_treenode_ex(ctx, sptr(label), 0, slen(label));
+}
 
-    int mu_header(mu_Context* ctx, string label)
-    {
-        return mu_header_ex(ctx, sptr(label), 0, slen(label));
-    }
+int mu_begin_treenode_ex(mu_Context* ctx, string label, int opt)
+{
+    return mu_begin_treenode_ex(ctx, sptr(label), opt, slen(label));
+}
 
-    int mu_header_ex(mu_Context* ctx, string label, int opt)
-    {
-        return mu_header_ex(ctx, sptr(label), opt, slen(label));
-    }
+int mu_begin_window(mu_Context* ctx, string title, mu_Rect rect)
+{
+    return mu_begin_window_ex(ctx, sptr(title), rect, 0, slen(title));
+}
 
-    int mu_begin_treenode(mu_Context* ctx, string label)
-    {
-        return mu_begin_treenode_ex(ctx, sptr(label), 0, slen(label));
-    }
+int mu_begin_window_ex(mu_Context* ctx, string title, mu_Rect rect, int opt)
+{
+    return mu_begin_window_ex(ctx, sptr(title), rect, opt, slen(title));
+}
 
-    int mu_begin_treenode_ex(mu_Context* ctx, string label, int opt)
-    {
-        return mu_begin_treenode_ex(ctx, sptr(label), opt, slen(label));
-    }
+mu_Container* mu_begin_panel(mu_Context* ctx, string name)
+{
+    return mu_begin_panel_ex(ctx, sptr(name), 0, slen(name));
+}
 
-    int mu_begin_window(mu_Context* ctx, string title, mu_Rect rect)
-    {
-        return mu_begin_window_ex(ctx, sptr(title), rect, 0, slen(title));
-    }
+mu_Container* mu_begin_panel_ex(mu_Context* ctx, string name, int opt)
+{
+    return mu_begin_panel_ex(ctx, sptr(name), opt, slen(name));
+}
 
-    int mu_begin_window_ex(mu_Context* ctx, string title, mu_Rect rect, int opt)
-    {
-        return mu_begin_window_ex(ctx, sptr(title), rect, opt, slen(title));
-    }
+mu_Container* mu_get_container(mu_Context* ctx, string name)
+{
+    return mu_get_container(ctx, sptr(name), slen(name));
+}
 
-    mu_Container* mu_begin_panel(mu_Context* ctx, string name)
-    {
-        return mu_begin_panel_ex(ctx, sptr(name), 0, slen(name));
-    }
+void mu_open_popup(mu_Context* ctx, string name)
+{
+    mu_open_popup(ctx, sptr(name), slen(name));
+}
 
-    mu_Container* mu_begin_panel_ex(mu_Context* ctx, string name, int opt)
-    {
-        return mu_begin_panel_ex(ctx, sptr(name), opt, slen(name));
-    }
+int mu_begin_popup(mu_Context* ctx, string name)
+{
+    return mu_begin_popup(ctx, sptr(name), slen(name));
+}
 
-    mu_Container* mu_get_container(mu_Context* ctx, string name)
-    {
-        return mu_get_container(ctx, sptr(name), slen(name));
-    }
+int mu_begin_menu(mu_Context* ctx, string label)
+{
+    return mu_begin_menu(ctx, sptr(label), slen(label));
+}
 
-    void mu_open_popup(mu_Context* ctx, string name)
-    {
-        mu_open_popup(ctx, sptr(name), slen(name));
-    }
+int mu_begin_submenu(mu_Context* ctx, string label)
+{
+    return mu_begin_submenu(ctx, sptr(label), slen(label));
+}
 
-    int mu_begin_popup(mu_Context* ctx, string name)
-    {
-        return mu_begin_popup(ctx, sptr(name), slen(name));
-    }
+int mu_menu_item(mu_Context* ctx, string label)
+{
+    return mu_menu_item(ctx, sptr(label), slen(label));
+}
 
-    int mu_begin_menu(mu_Context* ctx, string label)
-    {
-        return mu_begin_menu(ctx, sptr(label), slen(label));
-    }
+int mu_menu_item_ex(mu_Context* ctx, string label, string shortcut, int icon, int opt)
+{
+    return mu_menu_item_ex(ctx, sptr(label), shortcut.length ? sptr(shortcut) : null,
+        icon, opt, slen(label));
+}
 
-    int mu_begin_submenu(mu_Context* ctx, string label)
-    {
-        return mu_begin_submenu(ctx, sptr(label), slen(label));
-    }
+void mu_input_text(mu_Context* ctx, string text)
+{
+    mu_input_text(ctx, sptr(text), slen(text));
+}
 
-    int mu_menu_item(mu_Context* ctx, string label)
-    {
-        return mu_menu_item(ctx, sptr(label), slen(label));
-    }
+void mu_draw_text(mu_Context* ctx, mu_Font font, string str,
+    mu_Vec2 pos, mu_Color color)
+{
+    mu_draw_text(ctx, font, sptr(str), slen(str), pos, color);
+}
 
-    int mu_menu_item_ex(mu_Context* ctx, string label, string shortcut, int icon, int opt)
-    {
-        return mu_menu_item_ex(ctx, sptr(label), shortcut.length ? sptr(shortcut) : null,
-            icon, opt, slen(label));
-    }
+void mu_draw_control_text(mu_Context* ctx, string str, mu_Rect rect,
+    int colorid, int opt)
+{
+    mu_draw_control_text(ctx, sptr(str), rect, colorid, opt, slen(str));
+}
 
-    void mu_input_text(mu_Context* ctx, string text)
-    {
-        mu_input_text(ctx, sptr(text), slen(text));
-    }
+//
+// Format-string overloads: fmt is forwarded to C sprintf, so it needs a
+// nul-terminated copy. We have the length, so a bounded stack copy avoids the
+// GC (toStringz) and keeps these available in BetterC. The underlying calls
+// consume fmt synchronously (straight into sprintf), so the caller's buffer
+// outlives the use.
+//
 
-    void mu_draw_text(mu_Context* ctx, mu_Font font, string str,
-        mu_Vec2 pos, mu_Color color)
-    {
-        mu_draw_text(ctx, font, sptr(str), slen(str), pos, color);
-    }
+/// Copies a D string into a caller-owned buffer and nul-terminates it,
+/// truncating if it doesn't fit. Returns the buffer pointer.
+private const(char)* sfmt(string fmt, char[] buf)
+{
+    if (buf.length == 0) return "".ptr;            // nowhere to write, incl. nul
+    size_t n = mu_min(fmt.length, buf.length - 1); // guarded: buf.length >= 1
+    if (n > 0) memcpy(buf.ptr, fmt.ptr, n);        // skip: fmt.ptr may be null
+    buf[n] = '\0';
+    return buf.ptr;
+}
 
-    void mu_draw_control_text(mu_Context* ctx, string str, mu_Rect rect,
-        int colorid, int opt)
-    {
-        mu_draw_control_text(ctx, sptr(str), rect, colorid, opt, slen(str));
-    }
+unittest
+{
+    import core.stdc.string : strcmp, strlen;
 
-    int mu_slider_ex(mu_Context* ctx, mu_Real* value, mu_Real low, mu_Real high,
-        mu_Real step, string fmt, int opt)
-    {
-        return mu_slider_ex(ctx, value, low, high, step, fmt.toStringz, opt);
-    }
+    char[8] buf = void;
+    assert(strcmp(sfmt("%.2f", buf), "%.2f") == 0); // fits, verbatim
+    assert(strlen(sfmt("aaaaaaaaaa", buf)) == buf.length - 1); // truncated + nul
 
-    int mu_number_ex(mu_Context* ctx, mu_Real* value, mu_Real step,
-        string fmt, int opt)
-    {
-        return mu_number_ex(ctx, value, step, fmt.toStringz, opt);
-    }
+    // empty and null formats yield an empty string, not a crash
+    assert(strcmp(sfmt("", buf), "") == 0);
+    string z;
+    assert(strcmp(sfmt(z, buf), "") == 0);
 
-    void mu_progress_ex(mu_Context* ctx, mu_Real value, mu_Real low, mu_Real high,
-        string fmt, int opt, const(mu_Color)* color)
-    {
-        mu_progress_ex(ctx, value, low, high, fmt.toStringz, opt, color);
-    }
+    // a zero-length buffer is handled without underflowing buf.length - 1
+    char[0] none;
+    assert(strlen(sfmt("x", none)) == 0);
+}
+
+int mu_slider_ex(mu_Context* ctx, mu_Real* value, mu_Real low, mu_Real high,
+    mu_Real step, string fmt, int opt)
+{
+    char[MU_MAX_FMT] fbuf = void;
+    return mu_slider_ex(ctx, value, low, high, step, sfmt(fmt, fbuf), opt);
+}
+
+int mu_number_ex(mu_Context* ctx, mu_Real* value, mu_Real step,
+    string fmt, int opt)
+{
+    char[MU_MAX_FMT] fbuf = void;
+    return mu_number_ex(ctx, value, step, sfmt(fmt, fbuf), opt);
+}
+
+void mu_progress_ex(mu_Context* ctx, mu_Real value, mu_Real low, mu_Real high,
+    string fmt, int opt, const(mu_Color)* color)
+{
+    char[MU_MAX_FMT] fbuf = void;
+    mu_progress_ex(ctx, value, low, high, sfmt(fmt, fbuf), opt, color);
 }
