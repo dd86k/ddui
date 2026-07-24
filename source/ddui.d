@@ -238,6 +238,7 @@ enum
     MU_COLOR_BASEFOCUS,
     MU_COLOR_SCROLLBASE,
     MU_COLOR_SCROLLTHUMB,
+    MU_COLOR_SELECTION,
     MU_COLOR_MAX
 }
 
@@ -297,6 +298,10 @@ enum
     MU_KEY_HOME = (1 << 8),
     MU_KEY_END = (1 << 9),
     MU_KEY_DELETE = (1 << 10),
+    MU_KEY_COPY = (1 << 11),
+    MU_KEY_CUT = (1 << 12),
+    MU_KEY_PASTE = (1 << 13),
+    MU_KEY_SELECTALL = (1 << 14),
 }
 
 /// 2D vector point
@@ -440,6 +445,11 @@ struct mu_Context
     int function(mu_Font font) text_height;
     /// Callback for drawing boxes.
     void function(mu_Context* ctx, mu_Rect rect, int colorid) mu_draw_frame;
+    /// Clipboard read callback (optional). Returns a nul-terminated string that
+    /// stays valid for the duration of the call, or null when unavailable.
+    const(char)* function(mu_Context* ctx) get_clipboard;
+    /// Clipboard write callback (optional). `str` is a nul-terminated string.
+    void function(mu_Context* ctx, const(char)* str) set_clipboard;
     
     //
     // core state
@@ -461,8 +471,11 @@ struct mu_Context
 
     /// textbox caret: control the caret is attached to, and its byte offset
     /// into that control's buffer. Persists between frames while focus holds.
+    /// `select_anchor` is the other end of the selection; equal to `caret`
+    /// when nothing is selected.
     mu_Id caret_id;
     size_t caret;
+    size_t select_anchor;
 
     //
     // menu state
@@ -637,6 +650,8 @@ __gshared mu_Style default_style = {
         {  43,  43,  43, 255 },
         // MU_COLOR_SCROLLTHUMB
         {  30,  30,  30, 255 },
+        // MU_COLOR_SELECTION
+        {  60,  90, 160, 255 },
     ]
 };
 
@@ -1686,6 +1701,98 @@ int mu_checkbox(mu_Context* ctx, const(char)* label, int* state, int len = -1)
     return res;
 }
 
+/// Removes the current selection from `buf` (if any) and collapses the caret to
+/// its start. `*len` and the caret/anchor are updated in place.
+private void mu_textbox_erase_selection(mu_Context* ctx, char* buf, size_t* len)
+{
+    size_t lo = mu_min(ctx.caret, ctx.select_anchor);
+    size_t hi = mu_max(ctx.caret, ctx.select_anchor);
+    if (lo == hi)
+        return;
+    memmove(buf + lo, buf + hi, *len - hi);
+    *len -= hi - lo;
+    buf[*len] = '\0';
+    ctx.caret = lo;
+    ctx.select_anchor = lo;
+}
+
+/// Inserts `text` (up to `n` bytes, trimmed to a codepoint boundary and clamped
+/// to `bufsz`) at the caret, advancing it. Returns true when anything changed.
+private bool mu_textbox_insert(mu_Context* ctx, char* buf, int bufsz, size_t* len,
+    const(char)* text, size_t n)
+{
+    n = mu_utf8_trim(text, mu_min(bufsz - *len - 1, n));
+    if (n == 0)
+        return false;
+    memmove(buf + ctx.caret + n, buf + ctx.caret, *len - ctx.caret);
+    memcpy(buf + ctx.caret, text, n);
+    *len += n;
+    ctx.caret += n;
+    ctx.select_anchor = ctx.caret; // inserting collapses any selection
+    buf[*len] = '\0';
+    return true;
+}
+
+/// Byte offset of the codepoint boundary in `buf` nearest to screen x `mousex`,
+/// given the text is drawn starting at `originx`.
+private size_t mu_textbox_hit(mu_Context* ctx, mu_Font font, const(char)* buf,
+    size_t len, int originx, int mousex)
+{
+    size_t best = 0;
+    int bestd = mousex - originx;
+    if (bestd < 0)
+        bestd = -bestd;
+    size_t i = 0;
+    while (i < len)
+    {
+        size_t nxt = mu_utf8_next(buf, i, len);
+        int dx = mousex - (originx + ctx.text_width(font, buf, cast(int) nxt));
+        if (dx < 0)
+            dx = -dx;
+        if (dx < bestd)
+        {
+            bestd = dx;
+            best = nxt;
+        }
+        i = nxt;
+    }
+    return best;
+}
+
+unittest
+{
+    import core.stdc.string : strcmp;
+
+    // 8px per byte fixed-width font, matching the other tests
+    extern(C) static int fake_width(mu_Font, const(char)*, int len) { return len < 0 ? 0 : len * 8; }
+    extern(C) static int fake_height(mu_Font) { return 16; }
+
+    mu_Context* ctx = new mu_Context;
+    ctx.text_width = &fake_width;
+    ctx.text_height = &fake_height;
+
+    char[16] buf = 0;
+    strcpy(buf.ptr, "hello");
+    size_t len = 5;
+
+    // erase the "ell" selection (caret 1 .. anchor 4) -> "ho"
+    ctx.caret = 1;
+    ctx.select_anchor = 4;
+    mu_textbox_erase_selection(ctx, buf.ptr, &len);
+    assert(strcmp(buf.ptr, "ho") == 0);
+    assert(len == 2 && ctx.caret == 1 && ctx.select_anchor == 1);
+
+    // insert "X" at the caret -> "hXo", caret advances, selection collapsed
+    assert(mu_textbox_insert(ctx, buf.ptr, buf.sizeof, &len, "X", 1));
+    assert(strcmp(buf.ptr, "hXo") == 0);
+    assert(len == 3 && ctx.caret == 2 && ctx.select_anchor == 2);
+
+    // hit-test: origin 0, each glyph 8px wide. x=17 is nearest the boundary at byte 2
+    assert(mu_textbox_hit(ctx, null, buf.ptr, len, 0, 0) == 0);
+    assert(mu_textbox_hit(ctx, null, buf.ptr, len, 0, 17) == 2);
+    assert(mu_textbox_hit(ctx, null, buf.ptr, len, 0, 100) == 3); // past the end -> clamp
+}
+
 int mu_textbox_raw(mu_Context* ctx, char* buf, int bufsz, mu_Id id, mu_Rect r,
     int opt, int length = -1)
 {
@@ -1693,6 +1800,13 @@ int mu_textbox_raw(mu_Context* ctx, char* buf, int bufsz, mu_Id id, mu_Rect r,
     mu_update_control(ctx, id, r, opt | MU_OPT_HOLDFOCUS | MU_OPT_TABSTOP);
 
     size_t len = length < 0 ? strlen(buf) : cast(size_t) length;
+
+    // text origin on screen: rests at the left padding, but scrolls left to keep
+    // the caret visible when the content overflows. Computed up front so mouse
+    // hit-testing and drawing agree on where each glyph sits.
+    mu_Font font = ctx.style.font;
+    int left = r.x + ctx.style.padding;
+    int right = r.x + r.w - ctx.style.padding;
 
     if (ctx.focus == id)
     {
@@ -1702,62 +1816,144 @@ int mu_textbox_raw(mu_Context* ctx, char* buf, int bufsz, mu_Id id, mu_Rect r,
         {
             ctx.caret_id = id;
             ctx.caret = len;
+            ctx.select_anchor = len;
         }
         if (ctx.caret > len)
             ctx.caret = len;
+        if (ctx.select_anchor > len)
+            ctx.select_anchor = len;
 
         int ctrl = ctx.key_down & MU_KEY_CTRL;
+        int shift = ctx.key_down & MU_KEY_SHIFT;
+        int password = opt & MU_OPT_PASSWORD;
 
-        // handle text input, inserted at the caret
-        // clamp to remaining space, then back off to a codepoint boundary so
-        // a truncated chunk never leaves a partial utf-8 sequence behind
-        size_t n = mu_utf8_trim(ctx.input_text.ptr,
-            mu_min(bufsz - len - 1, strlen(ctx.input_text.ptr)));
-        if (n > 0)
+        // mouse: click places the caret, drag extends the selection. Password
+        // fields skip hit-testing (the mask is not a byte-for-byte view of buf).
+        if (password == false && (ctx.mouse_pressed & MU_MOUSE_LEFT || ctx.mouse_down & MU_MOUSE_LEFT))
         {
-            // shift the tail right to open a gap, then drop the text in
-            memmove(buf + ctx.caret + n, buf + ctx.caret, len - ctx.caret);
-            memcpy(buf + ctx.caret, ctx.input_text.ptr, n);
-            len += n;
-            ctx.caret += n;
-            buf[len] = '\0';
-            res |= MU_RES_CHANGE;
+            // reproduce the draw origin from the current caret so the hit maps
+            // to the glyphs actually on screen
+            int caretw = ctx.text_width(font, buf, cast(int) ctx.caret);
+            int originx = left;
+            if (originx + caretw > right)
+                originx = right - caretw;
+            size_t hit = mu_textbox_hit(ctx, font, buf, len, originx, ctx.mouse_pos.x);
+            ctx.caret = hit;
+            // a fresh press (without shift) drops the anchor; dragging keeps it
+            if (ctx.mouse_pressed & MU_MOUSE_LEFT && shift == false)
+                ctx.select_anchor = hit;
         }
 
-        // handle backspace: erase the codepoint (or word, with ctrl) before the caret
-        if (ctx.key_pressed & MU_KEY_BACKSPACE && ctx.caret > 0)
+        // handle text input, replacing any selection first
+        size_t inlen = strlen(ctx.input_text.ptr);
+        if (inlen > 0)
         {
-            size_t start = ctrl ? mu_word_prev(buf, ctx.caret)
-                                : mu_utf8_prev(buf, ctx.caret);
-            memmove(buf + start, buf + ctx.caret, len - ctx.caret);
-            len -= ctx.caret - start;
-            ctx.caret = start;
-            buf[len] = '\0';
-            res |= MU_RES_CHANGE;
+            mu_textbox_erase_selection(ctx, buf, &len);
+            if (mu_textbox_insert(ctx, buf, bufsz, &len, ctx.input_text.ptr, inlen))
+                res |= MU_RES_CHANGE;
         }
 
-        // handle delete: erase the codepoint (or word, with ctrl) after the caret
-        if (ctx.key_pressed & MU_KEY_DELETE && ctx.caret < len)
+        // clipboard: copy / cut / paste / select-all. These are only honored
+        // while ctrl is held, so a backend can safely map c/x/v/a directly.
+        if (ctrl && ctx.key_pressed & MU_KEY_SELECTALL)
         {
-            size_t end = ctrl ? mu_word_next(buf, ctx.caret, len)
-                              : mu_utf8_next(buf, ctx.caret, len);
-            memmove(buf + ctx.caret, buf + end, len - end);
-            len -= end - ctx.caret;
-            buf[len] = '\0';
-            res |= MU_RES_CHANGE;
+            ctx.select_anchor = 0;
+            ctx.caret = len;
+        }
+        if (ctrl && ctx.key_pressed & (MU_KEY_COPY | MU_KEY_CUT) &&
+            ctx.caret != ctx.select_anchor &&
+            ctx.set_clipboard && password == false)
+        {
+            size_t lo = mu_min(ctx.caret, ctx.select_anchor);
+            size_t hi = mu_max(ctx.caret, ctx.select_anchor);
+            // hand over a nul-terminated view without disturbing buf permanently
+            char saved = buf[hi];
+            buf[hi] = '\0';
+            ctx.set_clipboard(ctx, buf + lo);
+            buf[hi] = saved;
+            if (ctx.key_pressed & MU_KEY_CUT)
+            {
+                mu_textbox_erase_selection(ctx, buf, &len);
+                res |= MU_RES_CHANGE;
+            }
+        }
+        if (ctrl && ctx.key_pressed & MU_KEY_PASTE && ctx.get_clipboard)
+        {
+            const(char)* clip = ctx.get_clipboard(ctx);
+            if (clip)
+            {
+                mu_textbox_erase_selection(ctx, buf, &len);
+                if (mu_textbox_insert(ctx, buf, bufsz, &len, clip, strlen(clip)))
+                    res |= MU_RES_CHANGE;
+            }
         }
 
-        // caret movement
+        // handle backspace: erase the selection, or the codepoint/word before the caret
+        if (ctx.key_pressed & MU_KEY_BACKSPACE)
+        {
+            if (ctx.caret != ctx.select_anchor)
+            {
+                mu_textbox_erase_selection(ctx, buf, &len);
+                res |= MU_RES_CHANGE;
+            }
+            else if (ctx.caret > 0)
+            {
+                size_t start = ctrl ? mu_word_prev(buf, ctx.caret)
+                                    : mu_utf8_prev(buf, ctx.caret);
+                memmove(buf + start, buf + ctx.caret, len - ctx.caret);
+                len -= ctx.caret - start;
+                ctx.caret = start;
+                ctx.select_anchor = start;
+                buf[len] = '\0';
+                res |= MU_RES_CHANGE;
+            }
+        }
+
+        // handle delete: erase the selection, or the codepoint/word after the caret
+        if (ctx.key_pressed & MU_KEY_DELETE)
+        {
+            if (ctx.caret != ctx.select_anchor)
+            {
+                mu_textbox_erase_selection(ctx, buf, &len);
+                res |= MU_RES_CHANGE;
+            }
+            else if (ctx.caret < len)
+            {
+                size_t end = ctrl ? mu_word_next(buf, ctx.caret, len)
+                                  : mu_utf8_next(buf, ctx.caret, len);
+                memmove(buf + ctx.caret, buf + end, len - end);
+                len -= end - ctx.caret;
+                buf[len] = '\0';
+                res |= MU_RES_CHANGE;
+            }
+        }
+
+        // caret movement. Without shift an existing selection collapses to the
+        // edge we move toward; with shift the anchor stays put to extend it.
         if (ctx.key_pressed & MU_KEY_LEFT)
-            ctx.caret = ctrl ? mu_word_prev(buf, ctx.caret)
-                             : mu_utf8_prev(buf, ctx.caret);
+        {
+            if (ctx.caret != ctx.select_anchor && shift == false)
+                ctx.caret = mu_min(ctx.caret, ctx.select_anchor);
+            else
+                ctx.caret = ctrl ? mu_word_prev(buf, ctx.caret)
+                                 : mu_utf8_prev(buf, ctx.caret);
+        }
         if (ctx.key_pressed & MU_KEY_RIGHT)
-            ctx.caret = ctrl ? mu_word_next(buf, ctx.caret, len)
-                             : mu_utf8_next(buf, ctx.caret, len);
+        {
+            if (ctx.caret != ctx.select_anchor && shift == false)
+                ctx.caret = mu_max(ctx.caret, ctx.select_anchor);
+            else
+                ctx.caret = ctrl ? mu_word_next(buf, ctx.caret, len)
+                                 : mu_utf8_next(buf, ctx.caret, len);
+        }
         if (ctx.key_pressed & MU_KEY_HOME)
             ctx.caret = 0;
         if (ctx.key_pressed & MU_KEY_END)
             ctx.caret = len;
+        // collapse the selection onto the caret unless it is being extended
+        if (ctx.key_pressed & (MU_KEY_LEFT | MU_KEY_RIGHT | MU_KEY_HOME | MU_KEY_END) &&
+            shift == false)
+            ctx.select_anchor = ctx.caret;
 
         // handle return
         if (ctx.key_pressed & MU_KEY_RETURN)
@@ -1783,14 +1979,11 @@ int mu_textbox_raw(mu_Context* ctx, char* buf, int bufsz, mu_Id id, mu_Rect r,
     if (ctx.focus == id)
     {
         mu_Color color = ctx.style.colors[MU_COLOR_TEXT];
-        mu_Font font = ctx.style.font;
         int texth = ctx.text_height(font);
         // width from the start of the drawn text up to the caret; in password
         // mode the mask is one byte per source byte, so clamp into that range
         size_t caret_draw = opt & MU_OPT_PASSWORD ? mu_min(ctx.caret, draw_len) : ctx.caret;
         int caretw = ctx.text_width(font, draw_buf, cast(int) caret_draw);
-        int left = r.x + ctx.style.padding;
-        int right = r.x + r.w - ctx.style.padding;
         // rest at the left padding; scroll left only as far as needed to keep
         // the caret inside the box when the text overflows
         int textx = left;
@@ -1798,6 +1991,21 @@ int mu_textbox_raw(mu_Context* ctx, char* buf, int bufsz, mu_Id id, mu_Rect r,
             textx = right - caretw;
         int texty = r.y + (r.h - texth) / 2;
         mu_push_clip_rect(ctx, r);
+        // selection highlight, painted behind the text
+        if (ctx.caret != ctx.select_anchor)
+        {
+            size_t lo = mu_min(ctx.caret, ctx.select_anchor);
+            size_t hi = mu_max(ctx.caret, ctx.select_anchor);
+            if (opt & MU_OPT_PASSWORD)
+            {
+                lo = mu_min(lo, draw_len);
+                hi = mu_min(hi, draw_len);
+            }
+            int xlo = textx + ctx.text_width(font, draw_buf, cast(int) lo);
+            int xhi = textx + ctx.text_width(font, draw_buf, cast(int) hi);
+            mu_draw_rect(ctx, mu_Rect(xlo, texty, xhi - xlo, texth),
+                ctx.style.colors[MU_COLOR_SELECTION]);
+        }
         mu_draw_text(ctx, font, draw_buf, cast(int) draw_len, mu_Vec2(textx, texty), color);
         mu_draw_rect(ctx, mu_Rect(textx + caretw, texty, 1, texth), color);
         mu_pop_clip_rect(ctx);

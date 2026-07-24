@@ -108,6 +108,8 @@ void main(int argc, const(char) **args)
     mu_init(&uictx);
     uictx.text_width  = &text_width;
     uictx.text_height = &text_height;
+    uictx.get_clipboard = &get_clipboard;
+    uictx.set_clipboard = &set_clipboard;
     
     stopwatch_t.setup();
     
@@ -537,6 +539,11 @@ immutable const(ushort)[256] key_map = [
     SDLK_HOME         & 0xff : MU_KEY_HOME,
     SDLK_END          & 0xff : MU_KEY_END,
     SDLK_DELETE       & 0xff : MU_KEY_DELETE,
+    // clipboard shortcuts: only acted on by ddui while ctrl is held
+    SDLK_c            & 0xff : MU_KEY_COPY,
+    SDLK_x            & 0xff : MU_KEY_CUT,
+    SDLK_v            & 0xff : MU_KEY_PASTE,
+    SDLK_a            & 0xff : MU_KEY_SELECTALL,
 ];
 
 int text_width(mu_Font font, const(char) *text, int len)
@@ -548,4 +555,26 @@ int text_width(mu_Font font, const(char) *text, int len)
 int text_height(mu_Font font)
 {
     return r_get_text_height();
+}
+
+// ddui hands over ownership-free strings: copy the SDL clipboard into a static
+// buffer so the pointer stays valid after we free SDL's allocation.
+const(char)* get_clipboard(mu_Context* ctx)
+{
+    static char[1024] clip = void;
+    char* text = SDL_GetClipboardText();
+    if (text is null)
+        return null;
+    size_t n = strlen(text);
+    if (n >= clip.sizeof)
+        n = clip.sizeof - 1;
+    memcpy(clip.ptr, text, n);
+    clip[n] = '\0';
+    SDL_free(text);
+    return clip.ptr;
+}
+
+void set_clipboard(mu_Context* ctx, const(char)* text)
+{
+    SDL_SetClipboardText(text);
 }

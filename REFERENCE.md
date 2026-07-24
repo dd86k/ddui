@@ -266,11 +266,32 @@ Key flags:
 
 | Flag              | Value  | Notes                          |
 |-------------------|--------|--------------------------------|
-| `MU_KEY_SHIFT`    | 1 << 0 | Shift+click enables number edit in sliders |
-| `MU_KEY_CTRL`     | 1 << 1 |                                |
+| `MU_KEY_SHIFT`    | 1 << 0 | Shift+click enables number edit in sliders; extends textbox selection |
+| `MU_KEY_CTRL`     | 1 << 1 | With backspace/delete/arrows: operates on whole words; gates copy/cut/paste/select-all |
 | `MU_KEY_ALT`      | 1 << 2 |                                |
-| `MU_KEY_BACKSPACE`| 1 << 3 | Deletes characters in textboxes |
+| `MU_KEY_BACKSPACE`| 1 << 3 | Erases the selection, else the codepoint (word with ctrl) before the caret |
 | `MU_KEY_RETURN`   | 1 << 4 | Submits textbox input          |
+| `MU_KEY_TAB`      | 1 << 5 | Cycles focus between tab stops  |
+| `MU_KEY_LEFT`     | 1 << 6 | Moves the caret left (word with ctrl, extends selection with shift) |
+| `MU_KEY_RIGHT`    | 1 << 7 | Moves the caret right (word with ctrl, extends selection with shift) |
+| `MU_KEY_HOME`     | 1 << 8 | Moves the caret to the start   |
+| `MU_KEY_END`      | 1 << 9 | Moves the caret to the end     |
+| `MU_KEY_DELETE`   | 1 << 10 | Erases the selection, else the codepoint (word with ctrl) after the caret |
+| `MU_KEY_COPY`     | 1 << 11 | Copies the selection (ctrl held); needs `ctx.set_clipboard` |
+| `MU_KEY_CUT`      | 1 << 12 | Cuts the selection (ctrl held); needs `ctx.set_clipboard` |
+| `MU_KEY_PASTE`    | 1 << 13 | Pastes at the caret (ctrl held); needs `ctx.get_clipboard` |
+| `MU_KEY_SELECTALL`| 1 << 14 | Selects all text (ctrl held)   |
+
+Copy/cut/paste/select-all are only acted on while `MU_KEY_CTRL` is also down, so a
+backend can map the `c`/`x`/`v`/`a` keys straight through. Clipboard access goes
+through two optional context callbacks:
+
+```d
+const(char)* function(mu_Context* ctx) get_clipboard; // nul-terminated string, or null
+void function(mu_Context* ctx, const(char)* str) set_clipboard; // nul-terminated string
+```
+
+If left null, copy/cut/paste are simply inert.
 
 ### SDL2 Input Mapping Example
 
@@ -343,6 +364,16 @@ int sdl_key_to_mu(int sym)
         case SDLK_LALT, SDLK_RALT:           return MU_KEY_ALT;
         case SDLK_BACKSPACE:                  return MU_KEY_BACKSPACE;
         case SDLK_RETURN, SDLK_KP_ENTER:     return MU_KEY_RETURN;
+        case SDLK_TAB:                        return MU_KEY_TAB;
+        case SDLK_LEFT:                       return MU_KEY_LEFT;
+        case SDLK_RIGHT:                      return MU_KEY_RIGHT;
+        case SDLK_HOME:                       return MU_KEY_HOME;
+        case SDLK_END:                        return MU_KEY_END;
+        case SDLK_DELETE:                     return MU_KEY_DELETE;
+        case SDLK_c:                          return MU_KEY_COPY;
+        case SDLK_x:                          return MU_KEY_CUT;
+        case SDLK_v:                          return MU_KEY_PASTE;
+        case SDLK_a:                          return MU_KEY_SELECTALL;
         default: return 0;
     }
 }
@@ -928,6 +959,7 @@ __gshared mu_Style my_style = {
         {  35,  35,  35, 255 },  // MU_COLOR_BASEFOCUS
         {  40,  40,  40, 255 },  // MU_COLOR_SCROLLBASE
         {  25,  25,  25, 255 },  // MU_COLOR_SCROLLTHUMB
+        {  60,  90, 160, 255 },  // MU_COLOR_SELECTION
     ]
 };
 
@@ -952,6 +984,10 @@ mu_init(&ctx, &my_style);
 | `MU_COLOR_BASEFOCUS`  | Textbox/slider focused           |
 | `MU_COLOR_SCROLLBASE` | Scrollbar track                  |
 | `MU_COLOR_SCROLLTHUMB`| Scrollbar thumb                  |
+| `MU_COLOR_SELECTION`  | Textbox selection highlight      |
+
+Note: a custom style's `colors` array must supply `MU_COLOR_MAX` entries, so
+add a `MU_COLOR_SELECTION` value (last entry) when overriding the palette.
 
 ### Custom Draw Frame Callback
 
