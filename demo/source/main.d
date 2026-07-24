@@ -521,7 +521,7 @@ immutable const(ubyte)[256] button_map = [
 ];
 
 /// SDL-DDUI keyboard key mapping
-immutable const(ubyte)[256] key_map = [
+immutable const(ushort)[256] key_map = [
     SDLK_LSHIFT       & 0xff : MU_KEY_SHIFT,
     SDLK_RSHIFT       & 0xff : MU_KEY_SHIFT,
     SDLK_LCTRL        & 0xff : MU_KEY_CTRL,
@@ -532,6 +532,11 @@ immutable const(ubyte)[256] key_map = [
     SDLK_KP_ENTER     & 0xff : MU_KEY_RETURN,
     SDLK_BACKSPACE    & 0xff : MU_KEY_BACKSPACE,
     SDLK_TAB          & 0xff : MU_KEY_TAB,
+    SDLK_LEFT         & 0xff : MU_KEY_LEFT,
+    SDLK_RIGHT        & 0xff : MU_KEY_RIGHT,
+    SDLK_HOME         & 0xff : MU_KEY_HOME,
+    SDLK_END          & 0xff : MU_KEY_END,
+    SDLK_DELETE       & 0xff : MU_KEY_DELETE,
 ];
 
 int text_width(mu_Font font, const(char) *text, int len)

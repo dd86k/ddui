@@ -115,6 +115,75 @@ size_t mu_utf8_trim(const(char)* text, size_t n)
     return n;
 }
 
+/// Byte offset of the codepoint boundary just before `i`.
+size_t mu_utf8_prev(const(char)* s, size_t i)
+{
+    if (i == 0)
+        return 0;
+    --i;
+    while (i > 0 && (s[i] & 0xc0) == 0x80)
+        --i;
+    return i;
+}
+
+/// Byte offset of the codepoint boundary just after `i` (clamped to `len`).
+size_t mu_utf8_next(const(char)* s, size_t i, size_t len)
+{
+    if (i >= len)
+        return len;
+    ++i;
+    while (i < len && (s[i] & 0xc0) == 0x80)
+        ++i;
+    return i;
+}
+
+/// Byte offset of the word boundary left of `i`: skip whitespace, then the word.
+/// Bytes are read unsigned so utf-8 continuation/lead bytes never count as space.
+size_t mu_word_prev(const(char)* s, size_t i)
+{
+    while (i > 0 && cast(ubyte) s[i - 1] <= ' ')
+        --i;
+    while (i > 0 && cast(ubyte) s[i - 1] > ' ')
+        --i;
+    return i;
+}
+
+/// Byte offset of the word boundary right of `i` (clamped to `len`).
+size_t mu_word_next(const(char)* s, size_t i, size_t len)
+{
+    while (i < len && cast(ubyte) s[i] <= ' ')
+        ++i;
+    while (i < len && cast(ubyte) s[i] > ' ')
+        ++i;
+    return i;
+}
+
+unittest
+{
+    // "aé€" = 61 | C3 A9 | E2 82 AC
+    static immutable char[] s = ['a', '\xC3', '\xA9', '\xE2', '\x82', '\xAC', '\0'];
+    const(char)* p = s.ptr;
+
+    assert(mu_utf8_prev(p, 6) == 3); // before '€'
+    assert(mu_utf8_prev(p, 3) == 1); // before 'é'
+    assert(mu_utf8_prev(p, 1) == 0); // before 'a'
+    assert(mu_utf8_prev(p, 0) == 0); // clamped at start
+
+    assert(mu_utf8_next(p, 0, 6) == 1); // past 'a'
+    assert(mu_utf8_next(p, 1, 6) == 3); // past 'é'
+    assert(mu_utf8_next(p, 3, 6) == 6); // past '€'
+    assert(mu_utf8_next(p, 6, 6) == 6); // clamped at end
+
+    // words: multibyte codepoints must not read as whitespace
+    static immutable char[] w = ['a', 'b', ' ', 'c', 'd', '\0'];
+    const(char)* q = w.ptr;
+    assert(mu_word_prev(q, 5) == 3); // "cd" -> start of word
+    assert(mu_word_prev(q, 3) == 0); // over space then "ab"
+    assert(mu_word_next(q, 0, 5) == 2); // end of "ab"
+    assert(mu_word_next(q, 2, 5) == 5); // over space then "cd"
+    assert(mu_word_prev(s.ptr, 6) == 0); // "aé€" is one word
+}
+
 unittest
 {
     // "aé€" = 61 | C3 A9 | E2 82 AC  (1 + 2 + 3 bytes)
@@ -222,7 +291,12 @@ enum
     MU_KEY_ALT = (1 << 2),
     MU_KEY_BACKSPACE = (1 << 3),
     MU_KEY_RETURN = (1 << 4),
-    MU_KEY_TAB = (1 << 5)
+    MU_KEY_TAB = (1 << 5),
+    MU_KEY_LEFT = (1 << 6),
+    MU_KEY_RIGHT = (1 << 7),
+    MU_KEY_HOME = (1 << 8),
+    MU_KEY_END = (1 << 9),
+    MU_KEY_DELETE = (1 << 10),
 }
 
 /// 2D vector point
@@ -384,6 +458,11 @@ struct mu_Context
     mu_Container* scroll_target;
     char[MU_MAX_FMT] number_edit_buf;
     mu_Id number_edit;
+
+    /// textbox caret: control the caret is attached to, and its byte offset
+    /// into that control's buffer. Persists between frames while focus holds.
+    mu_Id caret_id;
+    size_t caret;
 
     //
     // menu state
@@ -1617,28 +1696,69 @@ int mu_textbox_raw(mu_Context* ctx, char* buf, int bufsz, mu_Id id, mu_Rect r,
 
     if (ctx.focus == id)
     {
-        // handle text input
+        // attach the caret when focus first lands here; keep it in range if the
+        // buffer was changed by the application behind our back
+        if (ctx.caret_id != id)
+        {
+            ctx.caret_id = id;
+            ctx.caret = len;
+        }
+        if (ctx.caret > len)
+            ctx.caret = len;
+
+        int ctrl = ctx.key_down & MU_KEY_CTRL;
+
+        // handle text input, inserted at the caret
         // clamp to remaining space, then back off to a codepoint boundary so
         // a truncated chunk never leaves a partial utf-8 sequence behind
         size_t n = mu_utf8_trim(ctx.input_text.ptr,
             mu_min(bufsz - len - 1, strlen(ctx.input_text.ptr)));
         if (n > 0)
         {
-            memcpy(buf + len, ctx.input_text.ptr, n);
+            // shift the tail right to open a gap, then drop the text in
+            memmove(buf + ctx.caret + n, buf + ctx.caret, len - ctx.caret);
+            memcpy(buf + ctx.caret, ctx.input_text.ptr, n);
             len += n;
+            ctx.caret += n;
             buf[len] = '\0';
             res |= MU_RES_CHANGE;
         }
-        
-        // handle backspace
-        if (ctx.key_pressed & MU_KEY_BACKSPACE && len > 0)
+
+        // handle backspace: erase the codepoint (or word, with ctrl) before the caret
+        if (ctx.key_pressed & MU_KEY_BACKSPACE && ctx.caret > 0)
         {
-            // skip utf-8 continuation bytes
-            while ((buf[--len] & 0xc0) == 0x80 && len > 0) {}
+            size_t start = ctrl ? mu_word_prev(buf, ctx.caret)
+                                : mu_utf8_prev(buf, ctx.caret);
+            memmove(buf + start, buf + ctx.caret, len - ctx.caret);
+            len -= ctx.caret - start;
+            ctx.caret = start;
             buf[len] = '\0';
             res |= MU_RES_CHANGE;
         }
-        
+
+        // handle delete: erase the codepoint (or word, with ctrl) after the caret
+        if (ctx.key_pressed & MU_KEY_DELETE && ctx.caret < len)
+        {
+            size_t end = ctrl ? mu_word_next(buf, ctx.caret, len)
+                              : mu_utf8_next(buf, ctx.caret, len);
+            memmove(buf + ctx.caret, buf + end, len - end);
+            len -= end - ctx.caret;
+            buf[len] = '\0';
+            res |= MU_RES_CHANGE;
+        }
+
+        // caret movement
+        if (ctx.key_pressed & MU_KEY_LEFT)
+            ctx.caret = ctrl ? mu_word_prev(buf, ctx.caret)
+                             : mu_utf8_prev(buf, ctx.caret);
+        if (ctx.key_pressed & MU_KEY_RIGHT)
+            ctx.caret = ctrl ? mu_word_next(buf, ctx.caret, len)
+                             : mu_utf8_next(buf, ctx.caret, len);
+        if (ctx.key_pressed & MU_KEY_HOME)
+            ctx.caret = 0;
+        if (ctx.key_pressed & MU_KEY_END)
+            ctx.caret = len;
+
         // handle return
         if (ctx.key_pressed & MU_KEY_RETURN)
         {
@@ -1664,14 +1784,22 @@ int mu_textbox_raw(mu_Context* ctx, char* buf, int bufsz, mu_Id id, mu_Rect r,
     {
         mu_Color color = ctx.style.colors[MU_COLOR_TEXT];
         mu_Font font = ctx.style.font;
-        int textw = ctx.text_width(font, draw_buf, cast(int) draw_len);
         int texth = ctx.text_height(font);
-        int ofx = r.w - ctx.style.padding - textw - 1;
-        int textx = r.x + mu_min(ofx, ctx.style.padding);
+        // width from the start of the drawn text up to the caret; in password
+        // mode the mask is one byte per source byte, so clamp into that range
+        size_t caret_draw = opt & MU_OPT_PASSWORD ? mu_min(ctx.caret, draw_len) : ctx.caret;
+        int caretw = ctx.text_width(font, draw_buf, cast(int) caret_draw);
+        int left = r.x + ctx.style.padding;
+        int right = r.x + r.w - ctx.style.padding;
+        // rest at the left padding; scroll left only as far as needed to keep
+        // the caret inside the box when the text overflows
+        int textx = left;
+        if (textx + caretw > right)
+            textx = right - caretw;
         int texty = r.y + (r.h - texth) / 2;
         mu_push_clip_rect(ctx, r);
         mu_draw_text(ctx, font, draw_buf, cast(int) draw_len, mu_Vec2(textx, texty), color);
-        mu_draw_rect(ctx, mu_Rect(textx + textw, texty, 1, texth), color);
+        mu_draw_rect(ctx, mu_Rect(textx + caretw, texty, 1, texth), color);
         mu_pop_clip_rect(ctx);
     }
     else
