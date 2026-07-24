@@ -115,6 +115,34 @@ size_t mu_utf8_trim(const(char)* text, size_t n)
     return n;
 }
 
+/// Clamps a length to a capacity, on a UTF-8 codepoint boundary.
+///
+/// Returns `len` untouched when it already fits, otherwise `cap` trimmed back to
+/// a codepoint boundary. Unlike calling mu_utf8_trim directly, this never reads
+/// `text[len]`: callers commonly pass an explicit length into a buffer that is
+/// neither nul-terminated nor readable past that length.
+/// Params:
+///   text = UTF-8 buffer.
+///   len = Byte count the caller has.
+///   cap = Byte count the caller can accept.
+/// Returns: Byte count on a codepoint boundary, `<= len` and `<= cap`.
+size_t mu_utf8_clamp(const(char)* text, size_t len, size_t cap)
+{
+    return len <= cap ? len : mu_utf8_trim(text, cap);
+}
+
+unittest
+{
+    // "aé€" = 61 | C3 A9 | E2 82 AC, with no terminator: reading s[6] is invalid
+    static immutable char[] s = ['a', '\xC3', '\xA9', '\xE2', '\x82', '\xAC'];
+    const(char)* p = s.ptr;
+
+    assert(mu_utf8_clamp(p, 6, 6) == 6); // exact fit, no read past the end
+    assert(mu_utf8_clamp(p, 6, 9) == 6); // room to spare
+    assert(mu_utf8_clamp(p, 6, 5) == 3); // cut inside '€' -> after 'é'
+    assert(mu_utf8_clamp(p, 6, 0) == 0); // no room at all
+}
+
 /// Byte offset of the codepoint boundary just before `i`.
 size_t mu_utf8_prev(const(char)* s, size_t i)
 {
@@ -1087,7 +1115,7 @@ void mu_input_text(mu_Context* ctx, const(char)* text, int tlen = -1)
     size_t len = strlen(ctx.input_text.ptr);
     // clamp to remaining space, then back off to a utf-8 codepoint boundary
     // so a truncated chunk never leaves a partial sequence in the buffer
-    size_t n = mu_utf8_trim(text, mu_min(cast(size_t) tlen, ctx.input_text.sizeof - len - 1));
+    size_t n = mu_utf8_clamp(text, cast(size_t) tlen, ctx.input_text.sizeof - len - 1);
     memcpy(ctx.input_text.ptr + len, text, n);
     ctx.input_text[len + n] = '\0';
 }
@@ -1236,7 +1264,7 @@ void mu_draw_text(mu_Context* ctx, mu_Font font, const(char)* str, int len,
     // space (trimmed to a utf-8 boundary) so we never overrun or split a char.
     size_t space = ctx.text_stack.items.length - ctx.text_stack.idx;
     size_t cap = space > 0 ? mu_min(space - 1, cast(size_t) MU_TEXTSTACK_SIZE - 1) : 0;
-    size_t n = mu_utf8_trim(str, mu_min(cast(size_t) len, cap));
+    size_t n = mu_utf8_clamp(str, cast(size_t) len, cap);
 
     int idx = cast(int) ctx.text_stack.idx;
     memcpy(ctx.text_stack.items.ptr + idx, str, n);
@@ -1721,7 +1749,7 @@ private void mu_textbox_erase_selection(mu_Context* ctx, char* buf, size_t* len)
 private bool mu_textbox_insert(mu_Context* ctx, char* buf, int bufsz, size_t* len,
     const(char)* text, size_t n)
 {
-    n = mu_utf8_trim(text, mu_min(bufsz - *len - 1, n));
+    n = mu_utf8_clamp(text, n, bufsz - *len - 1);
     if (n == 0)
         return false;
     memmove(buf + ctx.caret + n, buf + ctx.caret, *len - ctx.caret);
