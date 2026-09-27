@@ -866,7 +866,10 @@ void mu_end(mu_Context* ctx)
         }
         ctx.root_list.items[j] = key;
     }
-    
+
+    if (n == 0)
+        return;
+
     // Set root container jump commands
     // First container should have the first command jump to it
     mu_Command* cmd = cast(mu_Command*) ctx.command_list.items;
