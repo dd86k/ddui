@@ -389,9 +389,9 @@ struct mu_RectCommand
 struct mu_TextCommand
 {
     mu_BaseCommand base;
+    mu_Color color;
     mu_Font font;
     mu_Vec2 pos;
-    mu_Color color;
     /// Byte offset of the string within `mu_Context.text_stack`.
     /// Resolve to a pointer with `mu_command_text`.
     int str_index;
@@ -419,6 +419,7 @@ union mu_Command
     mu_TextCommand text;
     mu_IconCommand icon;
 }
+version (D_LP64) static assert(mu_Command.sizeof == 32);
 
 ///
 struct mu_Layout
@@ -1254,12 +1255,11 @@ mu_Id mu_frame_hash(mu_Context* ctx)
         case MU_COMMAND_RECT: mu_hash(&h, &cmd.rect, mu_RectCommand.sizeof); break;
         case MU_COMMAND_ICON: mu_hash(&h, &cmd.icon, mu_IconCommand.sizeof); break;
         case MU_COMMAND_TEXT:
-            // TextCommand has padding before `font`, and str_index varies
-            // with emission order, so hash the string itself instead
+            // str_index varies with emission order, so hash the string itself
             mu_hash(&h, &cmd.text.base, mu_BaseCommand.sizeof);
+            mu_hash(&h, &cmd.text.color, mu_Color.sizeof);
             mu_hash(&h, &cmd.text.font, mu_Font.sizeof);
             mu_hash(&h, &cmd.text.pos, mu_Vec2.sizeof);
-            mu_hash(&h, &cmd.text.color, mu_Color.sizeof);
             mu_hash(&h, &cmd.text.str_len, int.sizeof);
             mu_hash(&h, mu_command_text(ctx, cmd), cmd.text.str_len);
             break;
