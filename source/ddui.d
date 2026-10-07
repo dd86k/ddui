@@ -1384,14 +1384,18 @@ void mu_draw_box(mu_Context* ctx, mu_Rect rect, mu_Color color)
 }
 
 void mu_draw_text(mu_Context* ctx, mu_Font font, const(char)* str, int len,
-    mu_Vec2 pos, mu_Color color)
+    mu_Vec2 pos, mu_Color color, int width = -1)
 {
     if (len < 0)
     {
         len = cast(int)strlen(str);
     }
+    if (width < 0)
+    {
+        width = ctx.text_width(font, str, len);
+    }
 
-    mu_Rect rect = mu_Rect(pos.x, pos.y, ctx.text_width(font, str, len), ctx.text_height(font));
+    mu_Rect rect = mu_Rect(pos.x, pos.y, width, ctx.text_height(font));
     int clipped = mu_check_clip(ctx, rect);
     if (clipped == MU_CLIP_ALL)
     {
@@ -1760,7 +1764,7 @@ void mu_draw_control_text(mu_Context* ctx, const(char)* str,
         pos.x = rect.x + ctx.style.padding;
     }
     
-    mu_draw_text(ctx, font, str, len, pos, ctx.style.colors[colorid]);
+    mu_draw_text(ctx, font, str, len, pos, ctx.style.colors[colorid], tw);
     mu_pop_clip_rect(ctx);
 }
 
@@ -1833,7 +1837,7 @@ void mu_text(mu_Context* ctx, const(char)* text, int len = -1)
     do
     {
         mu_Rect r = mu_layout_next(ctx);
-        int w = 0;
+        int w = 0, linew = 0;
         start = end = p;
         do
         {
@@ -1847,13 +1851,15 @@ void mu_text(mu_Context* ctx, const(char)* text, int len = -1)
             {
                 break;
             }
-            if (p < bound)
-                w += ctx.text_width(font, p, 1);
             end = p;
+            linew = w;
             if (p < bound)
+            {
+                w += ctx.text_width(font, p, 1);
                 ++p;
+            }
         } while (end < bound && *end != '\n');
-        mu_draw_text(ctx, font, start, cast(int)(end - start), mu_Vec2(r.x, r.y), color);
+        mu_draw_text(ctx, font, start, cast(int)(end - start), mu_Vec2(r.x, r.y), color, linew);
         p = end + 1;
     } while (end < bound);
     mu_layout_end_column(ctx);
