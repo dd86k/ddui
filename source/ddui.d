@@ -1976,26 +1976,35 @@ private bool mu_textbox_insert(mu_Context* ctx, char* buf, int bufsz, size_t* le
 private size_t mu_textbox_hit(mu_Context* ctx, mu_Font font, const(char)* buf,
     size_t len, int originx, int mousex)
 {
-    size_t best = 0;
-    int bestd = mousex - originx;
-    if (bestd < 0)
-        bestd = -bestd;
-    size_t i = 0;
-    while (i < len)
+    int target = mousex - originx;
+    if (target <= 0 || len == 0)
+        return 0;
+    // prefix widths grow monotonically: bisect between boundaries lo and hi,
+    // keeping wlo < target <= whi. Exact prefixes match the caret drawing.
+    size_t lo = 0, hi = len;
+    int wlo = 0, whi = ctx.text_width(font, buf, cast(int) len);
+    if (whi <= target)
+        return len;
+    while (mu_utf8_next(buf, lo, len) < hi)
     {
-        size_t nxt = mu_utf8_next(buf, i, len);
-        int dx = mousex - (originx + ctx.text_width(font, buf, cast(int) nxt));
-        if (dx < 0)
-            dx = -dx;
-        if (dx < bestd)
+        size_t mid = mu_utf8_trim(buf, lo + (hi - lo) / 2);
+        if (mid <= lo)
+            mid = mu_utf8_next(buf, lo, len);
+        int w = ctx.text_width(font, buf, cast(int) mid);
+        if (w < target)
         {
-            bestd = dx;
-            best = nxt;
+            lo = mid;
+            wlo = w;
         }
-        i = nxt;
+        else
+        {
+            hi = mid;
+            whi = w;
+        }
     }
-    return best;
+    return target - wlo <= whi - target ? lo : hi;
 }
+
 
 unittest
 {
@@ -2029,6 +2038,14 @@ unittest
     assert(mu_textbox_hit(ctx, null, buf.ptr, len, 0, 0) == 0);
     assert(mu_textbox_hit(ctx, null, buf.ptr, len, 0, 17) == 2);
     assert(mu_textbox_hit(ctx, null, buf.ptr, len, 0, 100) == 3); // past the end -> clamp
+    assert(mu_textbox_hit(ctx, null, buf.ptr, len, 0, 12) == 1); // tie -> left
+    assert(mu_textbox_hit(ctx, null, buf.ptr, len, 0, 13) == 2);
+
+    // multi-byte: "a\xC3\xA9b" boundaries at 0, 1, 3, 4 -> x 0, 8, 24, 32
+    static immutable char[] u = ['a', '\xC3', '\xA9', 'b'];
+    assert(mu_textbox_hit(ctx, null, u.ptr, 4, 0, 15) == 1);
+    assert(mu_textbox_hit(ctx, null, u.ptr, 4, 0, 17) == 3);
+    assert(mu_textbox_hit(ctx, null, u.ptr, 4, 0, 29) == 4);
 }
 
 int mu_textbox_raw(mu_Context* ctx, char* buf, int bufsz, mu_Id id, mu_Rect r,
