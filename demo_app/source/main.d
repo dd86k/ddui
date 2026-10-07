@@ -138,6 +138,8 @@ void main(int argc, const(char) **args)
                 case SDL_QUIT: break Lgame;
 
                 case SDL_WINDOWEVENT:
+                    // exposed or resized: back buffer is stale
+                    mu_invalidate(&uictx);
                     if (e.window.event == SDL_WINDOWEVENT_RESIZED)
                     {
                         window_width  = e.window.data1;
@@ -189,6 +191,9 @@ void main(int argc, const(char) **args)
         full_window(&uictx);
         mu_end(&uictx);
         sw_ui.start;
+
+        if (mu_frame_dirty(&uictx) == false)
+            continue;
 
         // Clear screen and process rendering commands from UI
         stat_commands = uictx.command_list.idx;

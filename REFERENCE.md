@@ -219,6 +219,8 @@ foreach (ref cmd; mu_command_range(&ctx))
 
 **Important**: All UI definitions (windows, buttons, etc.) must happen between `mu_begin` and `mu_end`. The command list is only valid after `mu_end` returns.
 
+To skip rendering when nothing changed, see [Skipping Unchanged Frames](#skipping-unchanged-frames).
+
 ---
 
 ## Input Handling
@@ -900,6 +902,26 @@ void render_commands(mu_Context* ctx)
 }
 ```
 
+### Skipping Unchanged Frames
+
+Immediate mode rebuilds the UI every frame, but the output often stays the same (idle mouse, a click on empty space). `mu_frame_dirty` hashes the command list and compares it with the last checked frame, so you can skip rendering and presenting:
+
+```d
+// event loop
+case SDL_WINDOWEVENT: // exposed or resized: back buffer is stale
+    mu_invalidate(&ctx);
+    break;
+
+// after mu_end
+if (mu_frame_dirty(&ctx))
+{
+    render_commands(&ctx);
+    SDL_GL_SwapWindow(window);
+}
+```
+
+Both are opt-in: nothing is hashed unless `mu_frame_dirty` is called. ddui only sees its own commands, so call `mu_invalidate` whenever the image depends on anything else: a lost or resized back buffer, a changed clear color, custom drawing outside ddui. For a custom policy, `mu_frame_hash` returns the raw hash.
+
 ---
 
 ## Styling
@@ -1110,6 +1132,9 @@ Used with `_ex` variants of controls and windows:
 
 **Commands:**
 - `mu_command_range(ctx)` — Returns command slice for iteration
+- `mu_frame_dirty(ctx)` — True if output changed since the last check
+- `mu_invalidate(ctx)` — Forces the next `mu_frame_dirty` to return true
+- `mu_frame_hash(ctx)` — Hash of the frame's output
 
 **Utility:**
 - `mu_set_focus(ctx, id)` — Set keyboard focus to a widget

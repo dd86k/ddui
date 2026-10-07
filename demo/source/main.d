@@ -127,6 +127,9 @@ void main(int argc, const(char) **args)
             switch (e.type)
             {
                 case SDL_QUIT: break GAME;
+                case SDL_WINDOWEVENT: // exposed or resized: back buffer is stale
+                    mu_invalidate(&uictx);
+                    continue;
                 case SDL_MOUSEMOTION:
                     mu_input_mousemove(&uictx, e.motion.x, e.motion.y);
                     continue;
@@ -182,6 +185,9 @@ void main(int argc, const(char) **args)
         }
         mu_end(&uictx);
         sw_ui.start;
+        
+        if (mu_frame_dirty(&uictx) == false)
+            continue;
         
         // Clear screen and process rendering commands from UI
         stat_commands = uictx.command_list.idx;

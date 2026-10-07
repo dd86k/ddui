@@ -546,6 +546,8 @@ struct mu_Context
     mu_PoolItem [MU_CONTAINERPOOL_SIZE] container_pool;
     mu_Container[MU_CONTAINERPOOL_SIZE] containers;
     mu_PoolItem [MU_TREENODEPOOL_SIZE]  treenode_pool;
+    mu_Id last_frame_hash;
+    bool  last_frame_valid;
     
     //
     // input state
@@ -1228,6 +1230,124 @@ deprecated("Use mu_get_next_command.")
 int mu_next_command(mu_Context* ctx, mu_Command** cmd)
 {
     return mu_get_next_command(ctx, cmd);
+}
+
+/// Hashes what the command list would render, in z-index order.
+///
+/// Call after mu_end. If the hash matches the previous frame's, the output is
+/// identical and the application can skip rendering and presenting. State
+/// outside the command list (background color, a resized or exposed window)
+/// remains the application's to track.
+/// Params: ctx = ddui context.
+/// Returns: 32-bit FNV-1a hash of the frame.
+mu_Id mu_frame_hash(mu_Context* ctx)
+{
+    mu_Id h = HASH_INITIAL;
+    mu_Command* cmd = null;
+    // hash per field rather than whole union slots: unused bytes may hold
+    // stale data from a larger command written to the same slot earlier
+    while (mu_get_next_command(ctx, &cmd))
+    {
+        switch (cmd.type)
+        {
+        case MU_COMMAND_CLIP: mu_hash(&h, &cmd.clip, mu_ClipCommand.sizeof); break;
+        case MU_COMMAND_RECT: mu_hash(&h, &cmd.rect, mu_RectCommand.sizeof); break;
+        case MU_COMMAND_ICON: mu_hash(&h, &cmd.icon, mu_IconCommand.sizeof); break;
+        case MU_COMMAND_TEXT:
+            // TextCommand has padding before `font`, and str_index varies
+            // with emission order, so hash the string itself instead
+            mu_hash(&h, &cmd.text.base, mu_BaseCommand.sizeof);
+            mu_hash(&h, &cmd.text.font, mu_Font.sizeof);
+            mu_hash(&h, &cmd.text.pos, mu_Vec2.sizeof);
+            mu_hash(&h, &cmd.text.color, mu_Color.sizeof);
+            mu_hash(&h, &cmd.text.str_len, int.sizeof);
+            mu_hash(&h, mu_command_text(ctx, cmd), cmd.text.str_len);
+            break;
+        default:
+        }
+    }
+    return h;
+}
+unittest
+{
+    extern(C) static int fake_width(mu_Font, const(char)*, int len) { return len < 0 ? 0 : len * 8; }
+    extern(C) static int fake_height(mu_Font) { return 16; }
+
+    mu_Context* ctx = new mu_Context;
+    ctx.text_width = &fake_width;
+    ctx.text_height = &fake_height;
+
+    static mu_Id frame(mu_Context* ctx, const(char)* text, int x)
+    {
+        ctx.command_list.idx = 0;
+        ctx.text_stack.idx = 0;
+        ctx.clip_stack.idx = 0;
+        ctx.clip_stack.push(unclipped_rect);
+        mu_draw_text(ctx, null, text, -1, mu_Vec2(x, 0), mu_Color(1, 2, 3, 4));
+        mu_draw_rect(ctx, mu_Rect(x, 0, 4, 4), mu_Color(1, 2, 3, 4));
+        return mu_frame_hash(ctx);
+    }
+
+    mu_Id a = frame(ctx, "hello", 0);
+    assert(frame(ctx, "hello", 0) == a);
+    assert(frame(ctx, "hellO", 0) != a);
+    assert(frame(ctx, "hello", 1) != a);
+
+    // stale bytes in a reused slot must not affect the hash
+    ctx.command_list.items[1].text.str_len = 12345;
+    assert(frame(ctx, "hello", 0) == a);
+}
+
+/// Reports whether this frame's output differs from the last one checked.
+///
+/// Call after mu_end, at most once per frame; skip rendering and presenting
+/// when false. Opt-in: the hash is only computed when called. The first call
+/// and the first call after mu_invalidate always return true.
+/// Params: ctx = ddui context.
+/// Returns: True if the frame should be rendered.
+bool mu_frame_dirty(mu_Context* ctx)
+{
+    mu_Id hash = mu_frame_hash(ctx);
+    bool dirty = ctx.last_frame_valid == false || hash != ctx.last_frame_hash;
+    ctx.last_frame_hash = hash;
+    ctx.last_frame_valid = true;
+    return dirty;
+}
+
+/// Forces the next mu_frame_dirty to return true.
+///
+/// Call when the rendered image is lost or depends on state outside ddui:
+/// window exposed or resized, context lost, background color changed, etc.
+void mu_invalidate(mu_Context* ctx)
+{
+    ctx.last_frame_valid = false;
+}
+unittest
+{
+    extern(C) static int fake_width(mu_Font, const(char)*, int len) { return len < 0 ? 0 : len * 8; }
+    extern(C) static int fake_height(mu_Font) { return 16; }
+
+    mu_Context* ctx = new mu_Context;
+    ctx.text_width = &fake_width;
+    ctx.text_height = &fake_height;
+
+    static bool frame(mu_Context* ctx, const(char)* text)
+    {
+        ctx.command_list.idx = 0;
+        ctx.text_stack.idx = 0;
+        ctx.clip_stack.idx = 0;
+        ctx.clip_stack.push(unclipped_rect);
+        mu_draw_text(ctx, null, text, -1, mu_Vec2(0, 0), mu_Color(1, 2, 3, 4));
+        return mu_frame_dirty(ctx);
+    }
+
+    assert(frame(ctx, "a"));
+    assert(frame(ctx, "a") == false);
+    assert(frame(ctx, "b"));
+    assert(frame(ctx, "b") == false);
+    mu_invalidate(ctx);
+    assert(frame(ctx, "b"));
+    assert(frame(ctx, "b") == false);
 }
 
 int mu_push_jump(mu_Context* ctx, int idx)
