@@ -535,7 +535,10 @@ struct mu_Context
     mu_Stack!(mu_Id,         MU_IDSTACK_SIZE)        id_stack;
     mu_Stack!(mu_Layout,     MU_LAYOUTSTACK_SIZE)    layout_stack;
     mu_Stack!(mu_Id,         MU_FOCUSSTACK_SIZE)     focus_list;
-    
+    /// Acts like /dev/null when at over-capacity, but still instanced, so
+    /// can effectively return a valid pointer. Just never rendered.
+    mu_Command command_sink;
+
     //
     // retained state pools
     //
@@ -1156,8 +1159,25 @@ unittest
 ** commandlist
 **============================================================================*/
 
+/// Slots kept for root container head/tail jumps, so a full list can never
+/// leave mu_end patching a jump that was dropped.
+private enum MU_JUMP_RESERVE = 2 * MU_ROOTLIST_SIZE;
+static assert(MU_COMMANDLIST_SIZE > MU_JUMP_RESERVE);
+
+/// Number of non-jump commands that can still be pushed this frame.
+private size_t mu_command_room(mu_Context* ctx)
+{
+    enum size_t limit = MU_COMMANDLIST_SIZE - MU_JUMP_RESERVE;
+    return ctx.command_list.idx < limit ? limit - ctx.command_list.idx : 0;
+}
+
+/// Pushes a command. Once the list is full, non-jump commands are written to
+/// a sink and silently dropped, so callers never need to check the result.
 mu_Command* mu_push_command(mu_Context* ctx, int type)
 {
+    if (type != MU_COMMAND_JUMP && mu_command_room(ctx) == 0)
+        return &ctx.command_sink;
+    assert(ctx.command_list.idx < MU_COMMANDLIST_SIZE, "command list overflow");
     mu_Command* cmd = &ctx.command_list.items[ctx.command_list.idx];
     cmd.base.type = type;
     ++ctx.command_list.idx;
@@ -1257,6 +1277,11 @@ void mu_draw_text(mu_Context* ctx, mu_Font font, const(char)* str, int len,
     {
         return;
     }
+    // all-or-nothing: a dropped clip reset would leak into the next root
+    if (mu_command_room(ctx) < (clipped == MU_CLIP_PART ? 3 : 1))
+    {
+        return;
+    }
     if (clipped == MU_CLIP_PART)
     {
         mu_set_clip(ctx, mu_get_clip_rect(ctx));
@@ -1353,11 +1378,67 @@ unittest
     assert(c1.text.str_index == c0.text.str_index + 3);
 }
 
+unittest
+{
+    extern(C) static int fake_width(mu_Font, const(char)*, int len) { return len < 0 ? 0 : len * 8; }
+    extern(C) static int fake_height(mu_Font) { return 16; }
+
+    mu_Context* ctx = new mu_Context;
+    ctx.text_width = &fake_width;
+    ctx.text_height = &fake_height;
+    ctx.clip_stack.push(unclipped_rect);
+
+    enum size_t limit = MU_COMMANDLIST_SIZE - MU_JUMP_RESERVE;
+    int head = mu_push_jump(ctx, -1);
+    foreach (i; 0 .. MU_COMMANDLIST_SIZE)
+        mu_draw_rect(ctx, mu_Rect(0, 0, 4, 4), mu_Color(0, 0, 0, 0));
+    assert(ctx.command_list.idx == limit);
+
+    // text, icons and rects are dropped once full
+    mu_draw_text(ctx, null, "x", 1, mu_Vec2(0, 0), mu_Color(0, 0, 0, 0));
+    mu_draw_icon(ctx, 1, mu_Rect(0, 0, 4, 4), mu_Color(0, 0, 0, 0));
+    assert(ctx.command_list.idx == limit);
+
+    // jumps still land in the reserve, so the chain stays walkable
+    int tail = mu_push_jump(ctx, -1);
+    assert(tail == cast(int) limit);
+    ctx.command_list.items[head].jump.dst_idx = head + 1;
+    ctx.command_list.items[tail].jump.dst_idx = cast(int) ctx.command_list.idx;
+    mu_Command* cmd = null;
+    size_t n;
+    while (mu_get_next_command(ctx, &cmd))
+        ++n;
+    assert(n == limit - 1);
+}
+
+unittest
+{
+    // a clipped draw that can't fit clip+draw+reset must emit nothing
+    extern(C) static int fake_width(mu_Font, const(char)*, int len) { return len < 0 ? 0 : len * 8; }
+    extern(C) static int fake_height(mu_Font) { return 16; }
+
+    mu_Context* ctx = new mu_Context;
+    ctx.text_width = &fake_width;
+    ctx.text_height = &fake_height;
+    ctx.clip_stack.push(mu_Rect(0, 0, 10, 20));
+
+    enum size_t limit = MU_COMMANDLIST_SIZE - MU_JUMP_RESERVE;
+    ctx.command_list.idx = limit - 2;
+    mu_draw_text(ctx, null, "partial", -1, mu_Vec2(5, 5), mu_Color(0, 0, 0, 0));
+    assert(ctx.command_list.idx == limit - 2);
+    mu_draw_text(ctx, null, "a", -1, mu_Vec2(0, 0), mu_Color(0, 0, 0, 0));
+    assert(ctx.command_list.idx == limit - 1);
+}
+
 void mu_draw_icon(mu_Context* ctx, int id, mu_Rect rect, mu_Color color)
 {
     // do clip command if the rect isn't fully contained within the cliprect
     int clipped = mu_check_clip(ctx, rect);
     if (clipped == MU_CLIP_ALL)
+    {
+        return;
+    }
+    if (mu_command_room(ctx) < (clipped == MU_CLIP_PART ? 3 : 1))
     {
         return;
     }
