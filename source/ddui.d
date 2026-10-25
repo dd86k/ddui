@@ -62,6 +62,9 @@ enum const(char)* MU_SLIDER_FMT = "%.2f";
 /// Length of the text input buffer.
 enum MU_TEXT_LEN = 32;
 
+/// Pixels added to the font height for the minimum row height.
+enum MU_ROW_SLACK = 3;
+
 /// Defines a stack with a maximum number of items that can be inserted.
 /// Params: n = Maximum number of stack items allowed.
 struct mu_Stack(T, size_t n)
@@ -1640,6 +1643,19 @@ void mu_layout_set_next(mu_Context* ctx, mu_Rect r, int relative)
     layout.next_type = relative ? RELATIVE : ABSOLUTE;
 }
 
+/// Default row height: style size plus padding, grown to fit the font.
+int mu_row_height(mu_Context* ctx)
+{
+    return mu_max(ctx.style.size.y + ctx.style.padding * 2,
+        ctx.text_height(ctx.style.font) + MU_ROW_SLACK);
+}
+
+/// Title bar height: `title_height`, grown to fit the font.
+private int mu_title_height(mu_Context* ctx)
+{
+    return mu_max(ctx.style.title_height, mu_row_height(ctx));
+}
+
 mu_Rect mu_layout_next(mu_Context* ctx)
 {
     mu_Layout* layout = mu_get_layout(ctx);
@@ -1678,7 +1694,7 @@ mu_Rect mu_layout_next(mu_Context* ctx)
         }
         if (res.h == 0)
         {
-            res.h = style.size.y + style.padding * 2;
+            res.h = mu_row_height(ctx);
         }
         if (res.w < 0)
         {
@@ -2655,8 +2671,7 @@ void mu_push_container_body(mu_Context* ctx, mu_Container* cnt, mu_Rect body_, i
 void mu_begin_menubar(mu_Context* ctx)
 {
     int fill = -1;
-    int h = ctx.style.size.y + ctx.style.padding * 2;
-    mu_layout_row(ctx, 1, &fill, h);
+    mu_layout_row(ctx, 1, &fill, mu_row_height(ctx));
     mu_Rect bar = mu_layout_next(ctx);
     ctx.mu_draw_frame(ctx, bar, MU_COLOR_TITLEBG);
     ctx.menubar_x = bar.x;
@@ -2995,7 +3010,7 @@ int mu_begin_window_ex(mu_Context* ctx, const(char)* title, mu_Rect rect, int op
     if (~opt & MU_OPT_NOTITLE)
     {
         mu_Rect tr = rect;
-        tr.h = ctx.style.title_height;
+        tr.h = mu_title_height(ctx);
         ctx.mu_draw_frame(ctx, tr, MU_COLOR_TITLEBG);
 
         // do title text
@@ -3033,7 +3048,7 @@ int mu_begin_window_ex(mu_Context* ctx, const(char)* title, mu_Rect rect, int op
     // do `resize` handle
     if (~opt & MU_OPT_NORESIZE)
     {
-        int sz = ctx.style.title_height;
+        int sz = mu_title_height(ctx);
         mu_Id id2 = mu_get_id(ctx, cast(const(char)*)"!resize", 7);
         mu_Rect r = mu_Rect(rect.x + rect.w - sz, rect.y + rect.h - sz, sz, sz);
         mu_update_control(ctx, id2, r, opt);
